@@ -391,11 +391,11 @@
     }
   }
 
-  const centres = corners => corners.map(([u, v]) => [u + 0.5, v + 0.5]);
+  const centers = corners => corners.map(([u, v]) => [u + 0.5, v + 0.5]);
 
   // Closed rectangle loop.
   function loopLane(corners) {
-    const pts = centres(corners), n = pts.length, out = [];
+    const pts = centers(corners), n = pts.length, out = [];
     const dirs = pts.map((p, i) => unit(p, pts[(i + 1) % n]));
     for (let i = 0; i < n; i++) fillet(out, pts[i], dirs[(i - 1 + n) % n], dirs[i]);
     return out;
@@ -404,7 +404,7 @@
   // Hero route: pulls out from the curb at `start`, follows the right-hand
   // lane through `corners`, and pulls in to the curb at `end`.
   function routeLane(start, corners, end) {
-    const pts = centres([start, ...corners, end]), n = pts.length, out = [];
+    const pts = centers([start, ...corners, end]), n = pts.length, out = [];
     const dirs = pts.slice(0, -1).map((p, i) => unit(p, pts[i + 1]));
     const at = (p, d, side, along) => {
       const r = right(d);

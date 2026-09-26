@@ -242,11 +242,11 @@ def wheel_atlas(kind, atlas, cw, ch, wheels, k):
                         ring.append(p)
             if not inner:
                 continue
-            tyre = median_color(ring) or (30, 30, 34, 255)
+            tire = median_color(ring) or (30, 30, 34, 255)
             light = median_color([src[f * cw + x, y] for x, y, _ in inner
                                   if luma(src[f * cw + x, y]) >= DARK])
             if light is None:             # plain black wheel: add a hubcap
-                light = tuple(min(255, c + 60) for c in tyre[:3]) + (255,)
+                light = tuple(min(255, c + 60) for c in tire[:3]) + (255,)
             def notch(a, turn):
                 return math.cos(spokes * (a - turn)) > 0.55
             n = 12                            # samples across the blur arc
@@ -254,10 +254,10 @@ def wheel_atlas(kind, atlas, cw, ch, wheels, k):
                 turn = WHEEL_TURN[f] * period * ph / WHEEL_PHASES
                 trail = -WHEEL_TURN[f] * period * WHEEL_BLUR
                 for x, y, a in inner:
-                    dst[f * cw + x, ph * ch + y] = tyre if notch(a, turn) else light
+                    dst[f * cw + x, ph * ch + y] = tire if notch(a, turn) else light
                     t = sum(notch(a, turn + trail * i / (n - 1)) for i in range(n)) / n
                     dst[f * cw + x, (WHEEL_PHASES + ph) * ch + y] = tuple(
-                        round(l + (d - l) * t) for l, d in zip(light[:3], tyre[:3])) + (255,)
+                        round(l + (d - l) * t) for l, d in zip(light[:3], tire[:3])) + (255,)
     return out
 
 
