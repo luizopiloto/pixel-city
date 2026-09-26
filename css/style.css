@@ -1,0 +1,70 @@
+/* Only the city. The host page owns background, layout and copy, and sizes
+   the container; the canvas shows a pixel-sharp window onto the city. */
+.pixel-city {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.pixel-city__canvas {
+  display: block;
+}
+
+/* Miniature tilt-shift, under the vignette. city.js adds three layers and
+   keeps --tilt-focus (% of height) on the hero. Each layer blurs more and
+   starts further from the focus, so the blur grows gradually. */
+.pixel-city--tiltshift {
+  --tilt-focus: 55%;
+}
+
+.pixel-city--tiltshift .pixel-city__canvas {
+  filter: saturate(1.3) contrast(1.06);
+}
+
+.pixel-city__tiltshift {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.pixel-city__tiltshift > span {
+  --f: var(--tilt-focus);
+  position: absolute;
+  inset: 0;
+  -webkit-backdrop-filter: blur(var(--b));
+  backdrop-filter: blur(var(--b));
+  --m: linear-gradient(to bottom,
+    #000 calc(var(--f) - var(--far)), transparent calc(var(--f) - var(--near)),
+    transparent calc(var(--f) + var(--near)), #000 calc(var(--f) + var(--far)));
+  -webkit-mask-image: var(--m);
+  mask-image: var(--m);
+}
+
+.pixel-city__tiltshift > span:nth-child(1) { --b: 1px;   --near: 10%; --far: 22%; }
+.pixel-city__tiltshift > span:nth-child(2) { --b: 2.5px; --near: 20%; --far: 34%; }
+.pixel-city__tiltshift > span:nth-child(3) { --b: 5px;   --near: 30%; --far: 48%; }
+
+/* Vignette over the canvas, under the mini-map. */
+.pixel-city::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 50%, rgba(10, 10, 10, 0) 45%, rgba(10, 10, 10, 0.92) 100%);
+}
+
+/* GPS phone. city.js puts it in the container's bottom-right corner unless
+   data-minimap names another element to hold it. */
+.pixel-city__minimap {
+  z-index: 2;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55));
+}
+
+/* Standalone preview only: fill the window. */
+html, body { height: 100%; margin: 0; }
+body { background: #0a0a0a; }
+body > .pixel-city { width: 100vw; height: 100vh; aspect-ratio: auto; }
