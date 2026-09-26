@@ -1,5 +1,4 @@
-/* Only the city. The host page owns background, layout and copy, and sizes
-   the container; the canvas shows a pixel-sharp window onto the city. */
+/* The city container; the host page sets its size. */
 .pixel-city {
   position: relative;
   width: 100%;
@@ -12,9 +11,8 @@
   display: block;
 }
 
-/* Miniature tilt-shift, under the vignette. city.js adds three layers and
-   keeps --tilt-focus (% of height) on the hero. Each layer blurs more and
-   starts further from the focus, so the blur grows gradually. */
+/* Tilt-shift: three blur layers, each stronger and further from the focus
+   line (--tilt-focus, set by city.js on the hero). */
 .pixel-city--tiltshift {
   --tilt-focus: 55%;
 }
@@ -57,8 +55,7 @@
   background: radial-gradient(ellipse at 50% 50%, rgba(10, 10, 10, 0) 45%, rgba(10, 10, 10, 0.92) 100%);
 }
 
-/* GPS phone. city.js puts it in the container's bottom-right corner unless
-   data-minimap names another element to hold it. */
+/* GPS phone. */
 .pixel-city__minimap {
   z-index: 2;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55));

@@ -1,22 +1,16 @@
 /*
- * Pixel City — isometric tile renderer with sprite-driven traffic.
+ * Pixel City: isometric pixel-art city with traffic and a GPS-guided hero car.
  *
- * World space is a (u, v) tile grid. One tile is a 128×64 diamond:
- *   +u → screen down-right (SE edge), +v → screen down-left (SW edge).
- * The city is 8×8 blocks of 3×3 tiles on a road grid, wrapped in a one-tile
- * verge. A few 2×3 / 3×2 groups of blocks are merged into superblocks. Block
- * contents come from a seeded generator, so a seed always gives the same city.
+ * World space is a (u, v) tile grid; one tile is a 128×64 diamond.
+ *   +u → screen down-right, +v → screen down-left.
+ * The city is 8×8 blocks of 3×3 tiles on a road grid, generated from a seed.
  *
- * The page shows a pixel-sharp window onto the city (integer scale) that
- * follows the highlighted car along its route.
- *
- * Mount on any element with [data-pixel-city]. The host sets its size.
- *   data-assets  asset base path (default "assets/")
- *   data-seed    layout seed (default 7)
- *   data-zoom    pixel scale in CSS px per art px (default 2)
- *   data-minimap id of an element to hold the GPS mini-map (optional; without
- *                it the mini-map sits in the root's bottom-right corner)
- *   data-tiltshift "off" to drop the miniature tilt-shift blur (default on)
+ * Mount on any element with [data-pixel-city]:
+ *   data-assets     asset path (default "assets/")
+ *   data-seed       layout seed (default 7)
+ *   data-zoom       CSS px per art px (default 2)
+ *   data-minimap    id of an element to hold the GPS phone (optional)
+ *   data-tiltshift  "off" to disable the tilt-shift blur
  */
 (() => {
   const TW = 128, TH = 64, HW = TW / 2, HH = TH / 2;
@@ -33,9 +27,8 @@
   const iso = (u, v) => [OX + (u - v) * HW, TOP + (u + v) * HH];
   const roadAt = k => ROAD0 + k * PITCH;    // road index → tile
 
-  // Road auto-tiling. Authored tiles plus their mirror (swaps u↔v) and
-  // 180° rotation cover every connection.
-  //   key = open edges: n = -u (NW), e = -v (NE), s = +u (SE), w = +v (SW)
+  // Road auto-tiling: authored tiles plus mirrored (u↔v) and 180° rotated
+  // variants. Key = open edges: n = -u, e = -v, s = +u, w = +v.
   const ROAD_TILES = {
     ns:   ['road', 0],          nsx: ['crosswalk', 0],
     ew:   ['road', 'm'],        ewx: ['crosswalk', 'm'],
@@ -48,11 +41,8 @@
 
   /* ---------- sprites ---------- */
 
-  /*
-   * `base` is the bottom corner of the building's footprint in sprite pixels,
-   * `a`/`b` the footprint in tiles along u / v. Plated sprites include their
-   * own pavement; bare ones stand directly on the lot.
-   */
+  // `base`: bottom corner of the footprint in sprite px. `a`/`b`: footprint
+  // in tiles along u / v. Plated sprites include their own pavement.
   const BUILDINGS = {
     tower:   { src: 'building-tower.png',        base: [126, 153],   a: 1.906, b: 1.156 },
     corner:  { src: 'building-corner.png',       base: [110.5, 147], a: 1.664, b: 1.039 },
@@ -83,40 +73,25 @@
   // Superblocks, in blocks along u × v.
   const SUPERBLOCKS = [[3, 2], [2, 3], [3, 2], [2, 3]];
 
-  // Rota original do pacote, em coordenadas de índice de rua. Não é mais
-  // desenhada nem percorrida (25/09/2026: o herói agora roda rotas geradas,
-  // ver planRoute), mas continua reservando essas ruas na geração das
-  // superquadras — tirá-la mudaria a cidade inteira da semente 7.
+  // Old fixed hero route (road-index coords). No longer driven, but
+  // superblock placement still avoids it; removing it would change the city.
   const HERO_ROUTE = [[0, 5], [2, 5], [2, 3], [5, 3], [5, 6], [7, 6]];
-  // Rotas do herói: passeio aleatório pelas ruas, sem voltar pra trás nem
-  // repetir cruzamento, com ROUTE_EDGES[0]..[1] trechos entre cruzamentos
-  // (a rota fixa antiga tinha 11). No destino ele encosta no meio-fio,
-  // espera PARK_S segundos e sai numa rota nova a partir dali.
+  // Hero routes: random walks that never turn back or revisit a crossing,
+  // ROUTE_EDGES blocks long. At the end the hero parks for PARK_S seconds.
   const ROUTE_EDGES = [16, 24];
   const PARK_S = 5;
-  const CURB = 0.48;         // road centre to the parked hero: kerb-side wheels up on the kerb
-  // Supra (assets/supra.zip do usuário, 25/09/2026) — só o herói usa, não
-  // entra no trânsito aleatório (TYPES). O iso.png foi refeito a partir dos
-  // supraWhite_00NN.png (o do pacote estava em 1/6, metade dos outros):
-  //   - escala 1/2,3 (os outros carros usam 1/3), um pouco maior que eles;
-  //   - a renderização do Supra tem câmera mais alta (~42°) que a da cidade
-  //     (30°, iso 2:1): nos quadros das ruas retas (1, 5, 7, 11) a linha das
-  //     rodas saía a ±33,7° contra ±26,6° da rua. Esses quatro foram girados
-  //     7,1° antes de reduzir; os de curva (2, 4, 8, 10) já batiam (±12,4°
-  //     contra ±11,7°) e os de frente/lado/traseira não precisam;
-  //   - alfa binário em 128, como os outros.
-  // Sem a sombra de contato retangular: no Supra (mais baixo e comprido) ela
-  // aparecia como um bloco escuro ao lado do carro.
+  const CURB = 0.48;         // parked hero's offset from the road center
+  // The hero is a Supra (not in TYPES). No contact shadow: on this low, long
+  // car it looked like a dark block beside it.
   const HERO_TYPE = 'supra';
   const HERO_CELL = [73, 41];
-  // One pivot per frame: centre of the frame's silhouette, 5 px down. The
-  // renders' car sits at a different height in each frame, so a single pivot
-  // put the Supra toward the far kerb, more in some headings than others.
+  // One pivot per frame (silhouette center, 5 px down): the car sits at a
+  // different height in each render frame.
   const HERO_PIVOT = [
     [36, 26], [36, 26], [36, 26], [36, 27], [36, 28], [36, 28],
     [36, 29], [36, 28], [36, 28], [36, 27], [36, 26], [37, 26],
   ];
-  const HERO_GEM_Y = -36; // follows the car down with the per-frame pivots
+  const HERO_GEM_Y = -36; // marker height above the car's ground point
 
   /* ---------- traffic tuning ---------- */
 
@@ -130,7 +105,7 @@
 
   const ROUTE_COUNT = 14;
   const TILES_PER_CAR = 24;  // traffic density along each loop
-  const LANE = 0.23;         // lane centre offset from road centre line
+  const LANE = 0.23;         // lane offset from the road center line
   const TURN = 0.36;         // fillet radius at corners
   const CRUISE = 1.3;        // tiles / s
   const ACCEL = 1.6, DECEL = 3.2;
@@ -140,25 +115,18 @@
   // Sprite 0000 faces the camera; frames step 30° counter-clockwise.
   // The four iso road directions land on frames 1, 11, 7 and 5.
   const CAR_CELL = [53, 40];
-  // Half the car's length along the lane, in tiles (side-view sprite width /
-  // 90.5 px per tile): where the stop line sits relative to the car's centre.
+  // Half a car length in tiles: how far the stop line is from the car's center.
   const CAR_HALF = 0.24, HERO_HALF = 0.38;
   const CAR_PIVOT = [26, 32];
-  // Vehicle atlases also come at HD× resolution (iso@2x.png), drawn at the
-  // same size on canvas. Used when the view scale is a multiple of HD, so each
-  // atlas pixel still covers whole device pixels; otherwise the 1x atlas.
+  // HD atlases (iso@2x.png): same size on canvas, more detail. Used when the
+  // view scale is a multiple of HD so pixels stay sharp.
   const HD = 2;
-  // Wheel hubs turn: wheels.png holds WHEEL_PHASES rows of hub overlays (the
-  // spin direction is baked in per frame); a car steps one row every
-  // 1 / WHEEL_STEPS tiles it rolls. Slower than real so each step reads.
-  // Rows WHEEL_PHASES.. are the same phases motion-blurred, used above
-  // WHEEL_BLUR_SPEED so wheels go sharp again as a car slows to a stop.
+  // Spinning wheels: wheels.png holds WHEEL_PHASES rows of hub overlays, then
+  // the same rows motion-blurred (used above WHEEL_BLUR_SPEED). A car steps
+  // one row every 1 / WHEEL_STEPS tiles.
   const WHEEL_PHASES = 4, WHEEL_STEPS = 24, WHEEL_BLUR_SPEED = 0.5;
-  // Road bumps: every 1-3 tiles (random, BUMP_EVERY) a moving car hits a run
-  // of 1 to BUMP_RUN bumps, BUMP_GAP s apart. Each pops the body up and
-  // settles with a small damped dip: up for ~0.2 s, peaking near
-  // 0.56 * BUMP_AMP art px, scaled by speed. Overlapping bumps add up. The
-  // contact shadow stays put.
+  // Road bumps: every BUMP_EVERY tiles a moving car hits 1 to BUMP_RUN bumps,
+  // BUMP_GAP seconds apart. Each is a small damped bounce, scaled by speed.
   const BUMP_AMP = 2.2, BUMP_EVERY = [1, 3], BUMP_T = 0.6;
   const BUMP_RUN = 3, BUMP_GAP = [0.18, 0.3];
   const bumpLift = car => car.bumps.reduce((sum, b) => b.t < 0 ? sum
@@ -215,7 +183,7 @@
     const heroTiles = tilesAlong(HERO_ROUTE);
 
     // Superblocks: merged block groups that don't touch each other or the
-    // highlighted route. Stored as block ranges and as tile rects.
+    // old route.
     const supers = [];
     for (const [bw, bh] of SUPERBLOCKS) {
       for (let tries = 0; tries < 200; tries++) {
@@ -251,7 +219,7 @@
       prop('props/bin-gray.png', u + 1.2, v + 1.25);
     };
 
-    // Signalised intersections: full crossings, spread apart.
+    // Intersections with traffic lights: full crossings, spread apart.
     const signals = [];
     const candidates = [];
     for (let i = 1; i < BLOCKS; i++) for (let j = 1; j < BLOCKS; j++) {
@@ -266,8 +234,7 @@
     }
     const signalAt = new Map(signals.map((s, k) => [s.u + ',' + s.v, k]));
 
-    // Block templates. (u, v) is the block's top tile; offsets are
-    // block-local in [0, 3).
+    // Block templates. (u, v) is the block's top tile; offsets are in [0, 3).
     const T = {
       twin(u, v) {
         const p = shuffle([...PLATED]);
@@ -319,8 +286,7 @@
       },
     };
 
-    // Superblock: dense paved downtown. Columns along u are 2.1 wide (plated
-    // building) or 1.5 wide (bare building); rows along v are 1.25 deep.
+    // Superblock: dense paved downtown in columns and rows of buildings.
     const ROW = 1.25;
     function downtown(s) {
       const lu = s.u1 - s.u0, lv = s.v1 - s.v0;
@@ -435,9 +401,8 @@
     return out;
   }
 
-  // Open route for the hero: pulls out from the kerb at `start`, follows the
-  // right-hand lane through the turning corners, and pulls in to the kerb at
-  // `end`. All points are tile coordinates of road tiles.
+  // Hero route: pulls out from the curb at `start`, follows the right-hand
+  // lane through `corners`, and pulls in to the curb at `end`.
   function routeLane(start, corners, end) {
     const pts = centres([start, ...corners, end]), n = pts.length, out = [];
     const dirs = pts.slice(0, -1).map((p, i) => unit(p, pts[i + 1]));
@@ -477,9 +442,8 @@
       const len = Math.hypot(q[0] - a[0], q[1] - a[1]) || 1;
       return [(q[0] - a[0]) / len, (q[1] - a[1]) / len];
     });
-    // Stop lines: where the lane enters a signalised crossing. When the tile
-    // before the crossing is a crosswalk, the car stops short of that tile
-    // instead (its front bumper, not its centre, before the stripes).
+    // Stop lines where the lane enters a crossing with lights; before a
+    // crosswalk, the front bumper stops short of the stripes.
     const stops = [];
     const n = samples.length, pathLen = n * STEP;
     const tileOf = p => Math.floor(p[0]) + ',' + Math.floor(p[1]);
@@ -545,10 +509,7 @@
     side(bx, rx, by, -0.5, '#46382a', '#3f4a1a');
   }
 
-  /*
-   * Floating diamond marker, drawn pixel by pixel. `spin` in [0, 1) turns it
-   * about its vertical axis: the diamond narrows and the lit face swaps.
-   */
+  // Floating diamond marker. `spin` in [0, 1) turns it about its vertical axis.
   const GEM_HALF = [0, 1, 2, 3, 4, 5, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1, 0];
   const GEM = {
     lightTop: '#c6f7a0', darkTop: '#6fcf45', lightBot: '#8fe35f', darkBot: '#3f9a2c',
@@ -644,9 +605,8 @@
 
   /* ---------- hero routes ---------- */
 
-  // Generated routes for the hero over the road-index grid. `firstSpot` is
-  // a random mid-block parking spot to start from; `planRoute(spot)` returns
-  // the path from that spot to a new one ({ path, end }).
+  // Hero routes over the road grid. `planRoute(spot)` returns { path, end }
+  // from a parking spot to a new random one.
   function heroPlanner(city) {
   const nodeTile = ([i, j]) => [roadAt(i), roadAt(j)];
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -729,8 +689,8 @@
     root.appendChild(canvas);
     const ctx = canvas.getContext('2d');
 
-    // Miniature tilt-shift: stacked backdrop blurs, stronger away from a sharp
-    // band that render() keeps on the hero (--tilt-focus). Styled in CSS.
+    // Tilt-shift layers (styled in CSS); render() keeps the sharp band on the
+    // hero via --tilt-focus.
     const tilt = root.dataset.tiltshift !== 'off';
     if (tilt) {
       root.classList.add('pixel-city--tiltshift');
@@ -815,8 +775,8 @@
     statics.forEach(s => hash.add(s));
     sortStatics(statics, hash);
 
-    // Ground + every static sprite, baked once. A region is re-baked when a
-    // signal changes colour.
+    // Ground and static sprites, baked once; a region is re-baked when a
+    // traffic light changes.
     const sceneLayer = layer(g => {
       g.drawImage(groundLayer, 0, 0);
       [...statics].sort(byOrder).forEach(s => s.draw(g));
@@ -834,8 +794,7 @@
       sceneCtx.restore();
     }
 
-    // Cars. The hero drives generated routes (planRoute), parking at the end
-    // of each; the rest loop.
+    // Cars: the hero drives planned routes; the others loop.
     const { planRoute, firstSpot } = heroPlanner(city);
     let heroRoute = planRoute(firstSpot);
     const heroPath = heroRoute.path;
@@ -858,8 +817,7 @@
         }
       }
     }
-    // Interpolated between samples: snapping to the nearest one moved cars
-    // 0, 1 or 2 samples per frame at cruise speed, which read as stutter.
+    // Interpolate between path samples for smooth motion.
     const place = car => {
       const p = car.path, n = p.samples.length;
       const f = car.s / p.step, i = Math.floor(f) % n, t = f - Math.floor(f);
@@ -883,7 +841,7 @@
       for (const car of cars) {
         let gap = Infinity, atLight = false;
         for (const o of cars) {
-          if (o === car || o.parked > 0) continue;     // parked hero sits at the kerb
+          if (o === car || o.parked > 0) continue;     // the parked hero is at the curb
           const ahead = aheadOf(car, o);
           if (ahead < 0) continue;
           const crossing = Math.abs(car.head[0] * o.head[0] + car.head[1] * o.head[1]) < 0.5;
@@ -938,13 +896,9 @@
 
     /* ---------- mini-map ---------- */
 
-    // GPS mini-map (25/09/2026) as a pixel-art smartphone: the screen shows a
-    // zoomed map that follows the hero like the main camera, with the route
-    // (orange ahead, grey behind), destination pin (pinned to the screen edge
-    // while off-screen) and the car dot. Status bar with the local time.
-    // Map: MM_HW × MM_HH map px per half tile, rasterised by pixel centre.
-    // One art px = 1 CSS px regardless of data-zoom. Drawn only with fillRect
-    // and drawImage.
+    // GPS phone: a pixel-art smartphone whose screen shows a map following the
+    // hero, with the route (orange ahead, gray behind), destination pin and
+    // car dot. Map scale: MM_HW × MM_HH map px per half tile.
     const MM_HW = 6, MM_HH = 3;
     const PH_W = 96, PH_H = 164;                    // phone body
     const MM_W = PH_W + 2, MM_H = PH_H;             // + side buttons
@@ -1056,7 +1010,7 @@
     const mmCam = { x: 0, y: 0, t: -1 };
     function drawMinimap() {
       if (mmRoute !== hero.path) { mmRoute = hero.path; mmPixels = mmRoutePixels(hero.path); }
-      // Follow the car, eased like the main camera; car sits a bit below centre.
+      // Follow the car, eased like the main camera.
       const hx = mmX(hero.pos[0], hero.pos[1]), hy = mmY(hero.pos[0], hero.pos[1]);
       const k = mmCam.t < 0 ? 1 : 1 - Math.exp(-Math.max(0, clock - mmCam.t) * 2.5);
       mmCam.x += (hx - mmCam.x) * k;
@@ -1089,8 +1043,7 @@
         if (x < ox - 2 || y < oy - 2 || x > ox + SW || y > oy + SH) continue;
         px(x, y, 2, 2, i <= at ? MM_C.behind : MM_C.ahead);
       }
-      // Destination pin, tip on the parking spot; held at the screen edge
-      // while the spot is off-screen.
+      // Destination pin; stays on the screen edge while off-screen.
       const [eu, ev] = hero.path.samples[n - 1];
       const clampTo = (val, lo, hi) => Math.min(hi, Math.max(lo, val));
       const ex = clampTo(Math.round(mmX(eu, ev)), ox + 5, ox + SW - 5);
@@ -1123,17 +1076,15 @@
 
     /* ---------- view ---------- */
 
-    // Integer device-pixel scale keeps every art pixel square and sharp.
+    // Whole device px per art px keeps pixels sharp.
     const view = { scale: 1, w: 0, h: 0, x: 0, y: 0, camX: 0, camY: 0 };
     let mmScale = 1;
-    // Motion snaps to device pixels, not art pixels: sprites stay sharp (whole
-    // device px per art px) but move in steps of 1 device px, not `scale`.
+    // Snap motion to device pixels (finer than art pixels) for smoothness.
     const snap = a => Math.round(a * view.scale) / view.scale;
     function resize() {
       const dpr = window.devicePixelRatio || 1;
       const cw = root.clientWidth, ch = root.clientHeight;
-      // Phone exactly MM_FRAC of the container height. Drawn at the next whole
-      // device px per art px, then scaled down smoothly by CSS.
+      // Phone is MM_FRAC of the container height, drawn sharp then scaled by CSS.
       const mmH = ch * MM_FRAC;
       mmScale = Math.max(1, Math.ceil(mmH * dpr / MM_H));
       mmCanvas.width = MM_W * mmScale;
@@ -1212,7 +1163,7 @@
       visible.sort((a, b) => depth(a) - depth(b));
       for (const car of visible) {
         const rect = drawCar(ctx, car);
-        // Re-draw whatever stands in front of the car, clipped to the car.
+        // Redraw whatever stands in front of the car, clipped to it.
         const front = [...hash.query(rect)].filter(st => drawsBefore(car, st)).sort(byOrder);
         if (!front.length) continue;
         ctx.save();

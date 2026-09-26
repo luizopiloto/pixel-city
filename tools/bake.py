@@ -1,10 +1,9 @@
-"""Slice the source sheets into the sprites used by js/city.js.
+"""Build the sprites used by js/city.js from the source images in assets/.
 
     python3 tools/bake.py
 
-Reads assets/*.png and writes assets/tiles/, assets/props/,
-assets/buildings/ and one
-direction atlas per vehicle (assets/vehicles/<type>/iso.png).
+Writes assets/tiles/, assets/props/, assets/buildings/ and, per vehicle,
+iso.png, iso@2x.png and the wheel overlays.
 """
 from pathlib import Path
 from PIL import Image
@@ -56,16 +55,13 @@ BUILDINGS = {
 VEHICLES = ["carDefault", "carSedan", "carYellow"]
 CAR_BOX = (78, 54, 234, 172)      # common crop over all 12 frames
 CAR_SCALE = 0.34
-# Each vehicle also gets iso@2x.png: the same cells at twice the resolution,
-# drawn at the same size on canvas when the view scale is even (more detail).
+# iso@2x.png: the same cells at twice the resolution, for more detail.
 HD = 2
 
-# Hero Supra, from the 315x250 renders supraWhite_0000-0011.png. Their camera
-# is higher than the city's, which put the straight-road frames at +-33.7
-# degrees against the roads' +-26.6: those four are rotated first (Pillow
-# angles, counter-clockwise). Then scaled to 137x109 (1/2.3), cropped to a
-# common 73x41 box and given binary alpha. Only iso@2x.png is baked: the 1x
-# iso.png was made by hand with the same steps.
+# Hero Supra, from the renders supraWhite_0000-0011.png. Their camera is
+# higher than the city's, so the four straight-road frames are rotated to
+# match the roads. Then scaled, cropped and given binary alpha. Only
+# iso@2x.png is baked; the 1x iso.png was made by hand the same way.
 SUPRA_TURN = {1: 7.1, 7: 7.1, 5: -7.1, 11: -7.1}
 SUPRA_SIZE = (137, 109)
 SUPRA_BOX = (32, 28, 73, 41)      # x, y, w, h at 1x
@@ -127,28 +123,21 @@ def supra_atlas(k):
     return atlas
 
 
-# Wheel animation. For each vehicle, wheels.png and wheels@2x.png hold only
-# the repainted wheel hubs, one row per rotation phase (WHEEL_PHASES rows of
-# 12 cells, the same cells as the vehicle's atlas). city.js draws the row for
-# the car's rolled distance over the car. The hub gets WHEEL_SPOKES[kind]
-# dark notches; each phase turns them by a fraction of one notch period, in
-# the direction the frame's car moves across the screen.
+# Wheel animation: wheels.png / wheels@2x.png hold repainted wheel hubs, one
+# row per rotation phase, in the same cells as the vehicle's atlas. Each hub
+# gets WHEEL_SPOKES dark notches that turn in the car's direction of travel.
 WHEEL_PHASES = 4
-# Rows WHEEL_PHASES.. repeat the phases with motion blur, for moving cars:
-# each pixel averages the pattern over the last WHEEL_BLUR of a notch period
-# of rotation (trailing the spin), so notches smear into the hub colour.
+# A second set of rows adds motion blur over WHEEL_BLUR of a notch period.
 WHEEL_BLUR = 0.5
 WHEEL_SPOKES = {"carDefault": 3, "carSedan": 3, "carYellow": 3, "supra": 5}
-# Hub radius as a fraction of the listed ellipse: traffic cars list the hub
-# itself, the Supra lists the whole tyre.
+# Hub radius as a fraction of the listed ellipse (the Supra lists the tire).
 WHEEL_HUB = {"carDefault": 1.0, "carSedan": 1.0, "carYellow": 1.0, "supra": 0.75}
 # Screen direction of travel per frame: +1 right (clockwise wheels), -1 left.
 WHEEL_TURN = [0, 1, 1, 1, 1, 1, 0, -1, -1, -1, -1, -1]
-DARK = 80                         # luma below this is tyre (or window, outline)
+DARK = 80                         # luma below this counts as tire
 
-# The Supra's dark outline runs into its tyres, so its wheels are listed by
-# hand: (cx, cy, rx, ry) per frame in iso@2x.png cell px. Frames 0 and 6 show
-# no wheels.
+# The Supra's wheels, listed by hand since its outline merges with the tires:
+# (cx, cy, rx, ry) per frame, in iso@2x.png px.
 SUPRA_WHEELS = {
     1: [(28.7, 47.5, 5.4, 7.5), (75.0, 69.7, 5.8, 8.7)],
     2: [(24.4, 50.3, 8.7, 9.6), (98.2, 66.7, 8.3, 10.0)],
@@ -168,13 +157,10 @@ def luma(p):
 
 
 def find_wheels(fr):
-    """Hubs of a traffic car frame, as (cx, cy, rx, ry) ellipses.
+    """Wheel hubs of a traffic car frame, as (cx, cy, rx, ry) ellipses.
 
-    Tyres are compact blobs of pixels darker than luma 150 in the bottom
-    fifth of the car (the lowest two). The hub is what the tyre encloses; a plain black wheel
-    (or a hub the tyre doesn't close around) gets a hub of radius 3 at the
-    centre of the blob's thick part: the blob shaved by 3 px, or 2 or 1 if
-    that leaves nothing, which drops the thin underbody strips.
+    Tires are dark blobs near the bottom of the car. The hub is the area a
+    tire encloses; if there's none, a small hub is placed at the blob's center.
     """
     w, h = fr.size
     px = fr.load()
@@ -197,7 +183,7 @@ def find_wheels(fr):
         if not (len(blob) >= 30 and bw >= 9 and bh >= 9 and 0.6 < bw / bh < 1.7
                 and (y1 + 1 - top) / (bot - top) > 0.8):
             continue
-        # Non-blob pixels in the bounding box that the outside can't reach.
+        # Hub: pixels inside the tire that the outside can't reach.
         outside, stack = set(), [(x0 - 1, y0 - 1)]
         while stack:
             x, y = stack.pop()
@@ -221,8 +207,7 @@ def find_wheels(fr):
             cx = sum(p[0] for p in core) / len(core) + 0.5
             cy = sum(p[1] for p in core) / len(core) + 0.5
             wheels.append((y1, (cx, cy, 3.0, 3.0)))
-    # At most two wheels show; the lowest two, as a licence plate or grille
-    # outline can pass for a tyre around a hub.
+    # Keep the lowest two; a license plate or grille can look like a wheel.
     return [wh for _, wh in sorted(wheels, reverse=True)[:2]]
 
 
@@ -243,7 +228,7 @@ def wheel_atlas(kind, atlas, cw, ch, wheels, k):
         for cx, cy, rx, ry in wheels.get(f, []):
             cx, cy, rx, ry = (v * k / HD for v in (cx, cy, rx, ry))
             inner, ring = [], []
-            span = 2 if hub >= 1 else 1       # where to sample the tyre colour
+            span = 2 if hub >= 1 else 1       # where to sample the tire color
             for y in range(int(cy - ry * span), int(cy + ry * span) + 1):
                 for x in range(int(cx - rx * span), int(cx + rx * span) + 1):
                     if not (0 <= x < cw and 0 <= y < ch):

@@ -19,8 +19,7 @@
 <body>
   <div class="pixel-city" data-pixel-city data-assets="assets/" data-zoom="2"></div>
   <script>
-    // city.js reads data-zoom once, on mount: narrow screens get 100% (1 CSS
-    // px per art px), wider ones 200%.
+    // Smaller pixels on narrow screens (city.js reads data-zoom once).
     if (window.matchMedia('(max-width: 980px)').matches) {
       document.querySelector('[data-pixel-city]').dataset.zoom = '1';
     }
