@@ -1,9 +1,7 @@
 # Pixel City
 
 An isometric pixel-art city with animated traffic and a hero car driving
-random routes, followed by the camera and a GPS phone mini-map. Built to be
-embedded in a landing page: it draws only the city, and the host page owns
-the background, layout and copy.
+random routes, followed by the camera and a GPS phone mini-map.
 
 **Live demo:** https://luizopiloto.github.io/pixel-city/
 
