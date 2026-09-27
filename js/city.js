@@ -78,6 +78,23 @@
   // and one long block (1×2, 1×3, 2×1 or 3×1 merged) per CELLS_PER_LONG cells.
   const DOWNTOWN_CELLS = 256, SUPER_COUNT = 8, CELLS_PER_LONG = 16;
   const LONG_SHAPES = [[1, 2], [1, 3], [2, 1], [3, 1]];
+  // Districts attached to downtown's sides: [type, min cells, max cells].
+  const DISTRICTS = { suburb: [40, 60], park: [22, 36], plaza: [22, 32] };
+  // Civic landmarks each district type may get: at most one of each per
+  // district (the manifest tags them unique: "district").
+  const CIVIC = {
+    downtown: ['bank', 'police', 'fire-station', 'church'],
+    suburb: ['school', 'church', 'post-office', 'fire-station'],
+    plaza: ['post-office', 'bank', 'police'],
+    park: [],
+  };
+  const HOUSES = [1, 2, 3, 4, 5, 6].map(n => `houses/house-${n}.png`);
+  const PLAZA_BUILDINGS = ['buildings/shop-6.png', 'buildings/shop-7.png', 'buildings/fastfood.png',
+    'buildings/apartment-1.png', 'buildings/apartment-2.png'];
+  const DOWNTOWN_ART = ['buildings/shop-7.png', 'buildings/brick-3.png', 'buildings/office-5.png'];
+  const TREES = ['oak', 'oak-small', 'maple', 'birch', 'olive', 'pine', 'pine-small'].map(n => `nature/trees/${n}.png`);
+  const BUSHES = ['bush', 'bush-small', 'bush-flowers', 'shrub'].map(n => `nature/bushes/${n}.png`);
+  const GRASSES = ['grass-a', 'grass-a', 'grass-b', 'grass-lush', 'grass-flowers'].map(n => `art/ground/${n}`);
   // Regular 3×3 blocks, by template (relative weights).
   const BLOCK_MIX = { twin: 12, row: 8, mixed: 8, plaza: 3, park: 7, canal: 2 };
   // Hero routes: random walks that never turn back or revisit a crossing,
@@ -177,7 +194,7 @@
 
   /* ---------- city generation ---------- */
 
-  function generate(rng) {
+  function generate(rng, art = {}) {
     const pick = list => list[Math.floor(rng() * list.length)];
     const shuffle = list => {
       for (let i = list.length - 1; i > 0; i--) {
@@ -192,7 +209,7 @@
     // Downtown: grow a blob of cells from the center. Frontier cells with
     // more filled neighbors are likelier (compact shape); a smooth random
     // field biases growth into lobes, so the outline is irregular.
-    const GRID = 48;
+    const GRID = 72;
     const field = (() => {
       const g = [], n = GRID / 6 + 2;
       for (let a = 0; a < n; a++) { g.push([]); for (let b = 0; b < n; b++) g[a].push(rng()); }
@@ -205,7 +222,7 @@
     })();
     const cells = new Map();                     // 'i,j' → { i, j, type, sup }
     const filled = (ci, cj) => cells.has(key(ci, cj));
-    const fill = (ci, cj, type) => cells.set(key(ci, cj), { i: ci, j: cj, type, sup: -1 });
+    const fill = (ci, cj, type, district = 0) => cells.set(key(ci, cj), { i: ci, j: cj, type, district, sup: -1 });
     fill(GRID >> 1, GRID >> 1, 'downtown');
     while (cells.size < DOWNTOWN_CELLS) {
       const front = new Map();
@@ -222,11 +239,52 @@
       const [ni, nj] = opts.find(o => (r -= o[2]) <= 0) || opts[opts.length - 1];
       fill(ni, nj, 'downtown');
     }
-    for (let again = true; again;) {             // fill enclosed gaps
+    // Districts: blobs grown outward from downtown's sides, each from a
+    // seed cell on the outline facing its direction.
+    const center = GRID >> 1;
+    const kinds = shuffle(['suburb', 'park', 'plaza', ...(rng() < 0.6 ? ['suburb'] : [])]);
+    const sides = shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]]);
+    const districts = [{ type: 'downtown' }];
+    kinds.forEach((type, k) => {
+      const [dx, dy] = sides[k % sides.length];
+      const id = districts.length;
+      let seed = null, best = -Infinity;
+      for (const c of cells.values()) for (const [di, dj] of NB4) {
+        const ni = c.i + di, nj = c.j + dj;
+        if (filled(ni, nj)) continue;
+        const score = (ni - center) * dx + (nj - center) * dy + rng() * 3;
+        if (score > best) { best = score; seed = [ni, nj]; }
+      }
+      if (!seed) return;
+      districts.push({ type });
+      fill(seed[0], seed[1], type, id);
+      const [lo, hi] = DISTRICTS[type];
+      const target = lo + Math.floor(rng() * (hi - lo + 1));
+      for (let n = 1; n < target; n++) {
+        const front = new Map();
+        for (const c of cells.values()) {
+          if (c.district !== id) continue;
+          for (const [di, dj] of NB4) {
+            const ni = c.i + di, nj = c.j + dj;
+            if (ni < 1 || nj < 1 || ni >= GRID - 1 || nj >= GRID - 1 || filled(ni, nj)) continue;
+            const own = NB4.filter(([a, b]) => { const o = cells.get(key(ni + a, nj + b)); return o && o.district === id; }).length;
+            const far = Math.hypot(ni - seed[0], nj - seed[1]);
+            front.set(key(ni, nj), [ni, nj, own * own * (0.25 + field(ni, nj)) * Math.exp(-far / 5)]);
+          }
+        }
+        const opts = [...front.values()];
+        if (!opts.length) break;
+        let r = rng() * opts.reduce((t, o) => t + o[2], 0);
+        const [ni, nj] = opts.find(o => (r -= o[2]) <= 0) || opts[opts.length - 1];
+        fill(ni, nj, type, id);
+      }
+    });
+    for (let again = true; again;) {             // fill enclosed gaps with a neighbor's district
       again = false;
       for (let ci = 1; ci < GRID - 1; ci++) for (let cj = 1; cj < GRID - 1; cj++) {
-        if (!filled(ci, cj) && NB4.filter(([a, b]) => filled(ci + a, cj + b)).length >= 3) {
-          fill(ci, cj, 'downtown');
+        const around = NB4.map(([a, b]) => cells.get(key(ci + a, cj + b))).filter(Boolean);
+        if (!filled(ci, cj) && around.length >= 3) {
+          fill(ci, cj, around[0].type, around[0].district);
           again = true;
         }
       }
@@ -269,7 +327,8 @@
     // Roads: a segment between two lattice nodes exists when a cell beside
     // it is part of the city, unless both sides are the same superblock.
     const roadSet = new Set();
-    const sameSuper = (a, b) => a && b && a.sup >= 0 && a.sup === b.sup;
+    const sameSuper = (a, b) => a && b && ((a.sup >= 0 && a.sup === b.sup) ||
+      (a.type === 'park' && b.type === 'park' && a.district === b.district));
     for (let j = 0; j <= IV; j++) for (let i = 0; i < IU; i++) {     // along u
       const a = cellAt(i, j - 1), b = cellAt(i, j);
       if ((a || b) && !sameSuper(a, b)) {
@@ -283,6 +342,7 @@
       }
     }
     const isRoad = (u, v) => roadSet.has(key(u, v));
+    const junction = (u, v) => isRoad(u, v) && NB4.filter(([du, dv]) => isRoad(u + du, v + dv)).length >= 3;
 
     // Land: cells, roads and superblock interiors, plus a one-tile verge.
     const core = new Set(roadSet);
@@ -292,6 +352,16 @@
       }
     }
     for (const sb of supers) for (let u = sb.u0; u < sb.u1; u++) for (let v = sb.v0; v < sb.v1; v++) core.add(key(u, v));
+    // Merged interiors (parks): the road-line tiles between their cells.
+    for (let j = 0; j <= IV; j++) for (let i = 0; i < IU; i++) {
+      if (cellAt(i, j - 1) && cellAt(i, j)) for (let u = roadAt(i) + 1; u < roadAt(i + 1); u++) core.add(key(u, roadAt(j)));
+    }
+    for (let i = 0; i <= IU; i++) for (let j = 0; j < IV; j++) {
+      if (cellAt(i - 1, j) && cellAt(i, j)) for (let v = roadAt(j) + 1; v < roadAt(j + 1); v++) core.add(key(roadAt(i), v));
+    }
+    for (let i = 1; i < IU; i++) for (let j = 1; j < IV; j++) {
+      if (cellAt(i - 1, j - 1) && cellAt(i, j - 1) && cellAt(i - 1, j) && cellAt(i, j)) core.add(key(roadAt(i), roadAt(j)));
+    }
     const land = new Set(core);
     for (const k of core) {
       const [u, v] = k.split(',').map(Number);
@@ -317,7 +387,9 @@
     const candidates = [];
     for (let i = 1; i < IU; i++) for (let j = 1; j < IV; j++) {
       const u = roadAt(i), v = roadAt(j);
-      if (NB4.every(([du, dv]) => isRoad(u + du, v + dv))) candidates.push([i, j]);
+      const around = [cellAt(i - 1, j - 1), cellAt(i, j - 1), cellAt(i - 1, j), cellAt(i, j)];
+      const busy = around.every(c => c && (c.type === 'downtown' || c.type === 'plaza'));
+      if (busy && NB4.every(([du, dv]) => isRoad(u + du, v + dv))) candidates.push([i, j]);
     }
     shuffle(candidates);
     const signalCount = Math.round(cells.size / CELLS_PER_SIGNAL);
@@ -331,8 +403,10 @@
     // Block templates. (u, v) is the block's top tile; offsets are in [0, 3).
     const T = {
       twin(u, v) {
-        const p = shuffle([...PLATED]);
-        lots.push([p[0], u, u + 3, v, v + 1.5], [p[1], u, u + 3, v + 1.5, v + 3]);
+        // Back building against the block's back edge, front one on the
+        // street, so the back one's entrance faces open ground.
+        const p = shuffle([...PLATED]), b0 = BUILDINGS[p[0]].b, b1 = BUILDINGS[p[1]].b;
+        lots.push([p[0], u, u + 3, v + 0.06, v + 0.06 + b0], [p[1], u, u + 3, v + 2.94 - b1, v + 2.94]);
         prop(pick(PLANTERS), u + 0.22, v + 0.4 + rng() * 2.2);
         if (rng() < 0.6) prop('lamp.png', u + 2.8, v + 0.18);
       },
@@ -346,7 +420,8 @@
       },
       mixed(u, v) {
         pave(u, v);
-        lots.push([pick(PLATED), u, u + 3, v, v + 1.5]);
+        const back = pick(PLATED), b0 = BUILDINGS[back].b;
+        lots.push([back, u, u + 3, v + 0.06, v + 0.06 + b0]);
         lots.push([pick(BARE), u, u + 1.5, v + 1.5, v + 3], [pick(BARE), u + 1.5, u + 3, v + 1.5, v + 3]);
       },
       park(u, v) {
@@ -380,8 +455,10 @@
       },
     };
 
-    // Superblock: dense paved downtown in columns and rows of buildings.
-    const ROW = 1.25;
+    // Superblock: dense paved downtown in columns and rows of buildings,
+    // with ALLEY-wide paved alleys between rows so every entrance (on each
+    // building's +v front) opens onto open ground.
+    const ROW = 1.25, ALLEY = 0.5;
     function downtown(sb) {
       const lu = sb.u1 - sb.u0, lv = sb.v1 - sb.v0;
       pave(sb.u0, sb.v0, lu, lv);
@@ -392,11 +469,11 @@
         cols.push(w);
         rest -= w;
       }
-      const rows = Math.floor(lv / ROW);
-      const v0 = sb.v0 + (lv - rows * ROW) / 2;
+      const rows = Math.floor((lv + ALLEY) / (ROW + ALLEY));
+      const v0 = sb.v0 + (lv - rows * ROW - (rows - 1) * ALLEY) / 2;
       for (let r = 0; r < rows; r++) {
         let u = sb.u0 + rest / 2;
-        const v = v0 + r * ROW;
+        const v = v0 + r * (ROW + ALLEY);
         for (const w of cols) {
           if (rng() < 0.3) {
             prop(pick(PLANTERS), u + w / 2 - 0.3, v + 0.4);
@@ -410,12 +487,163 @@
     }
 
     supers.forEach(downtown);
+
+    // Art sprites (assets/art, see tools/art.py) stand at their footprint
+    // center: lots as ['art:<name>', u0, u1, v0, v1, district], props as
+    // ['art/<name>', u, v].
+    const fp = name => (art[name] && art[name].footprint) || [1, 1];
+    const artLot = (name, cu, cv, district) => {
+      const [a, b] = fp(name);
+      lots.push(['art:' + name, cu - a / 2, cu + a / 2, cv - b / 2, cv + b / 2, district]);
+    };
+    const artProp = (name, u, v) => props.push(['art/' + name, u, v]);
+    // Trees and bushes spread over an area, kept apart and off `blocked`.
+    function scatter(u0, v0, lu, lv, count, names, blocked = () => false, gap = 0.45) {
+      const spots = [];
+      for (let tries = 0; spots.length < count && tries < count * 12; tries++) {
+        const u = u0 + 0.2 + rng() * (lu - 0.4), v = v0 + 0.2 + rng() * (lv - 0.4);
+        if (blocked(u, v) || spots.some(([a, b]) => Math.hypot(a - u, b - v) < gap)) continue;
+        spots.push([u, v]);
+        artProp(pick(names), u, v);
+      }
+    }
+    const grassy = (u, v, lu = BLOCK, lv = BLOCK) => {
+      for (let du = 0; du < lu; du++) for (let dv = 0; dv < lv; dv++) setGround(u + du, v + dv, pick(GRASSES));
+    };
+
+    // Civic landmarks first: each district gets at most one of each kind
+    // its type allows, on its own (non-merged) cells.
     const free = [...cells.values()].filter(c => c.sup < 0);
+    districts.forEach((d, id) => {
+      const mine = shuffle(free.filter(c => c.district === id));
+      const names = shuffle([...CIVIC[d.type]]).slice(0, Math.max(0, Math.min(CIVIC[d.type].length, Math.floor(mine.length / 8))));
+      names.forEach((name, k) => { if (mine[k]) mine[k].civic = `civic/${name}.png`; });
+      if (d.type === 'suburb') { const c = mine[names.length]; if (c) c.diner = true; }
+      if (d.type === 'plaza') {                         // the most enclosed cell is the square
+        const own = c => NB4.filter(([a, b]) => { const o = cellAt(c.i + a, c.j + b); return o && o.district === id; }).length;
+        const sq = mine.filter(c => !c.civic).sort((a, b) => own(b) - own(a))[0];
+        if (sq) sq.square = true;
+      }
+    });
+    function civicCell(c, u, v, ground) {
+      if (ground === 'paving') pave(u, v); else grassy(u, v);
+      artLot(c.civic, u + 1.5, v + 1.5, c.district);
+      const [a, b] = fp(c.civic);
+      const off = (uu, vv) => Math.abs(uu - u - 1.5) < a / 2 + 0.25 && Math.abs(vv - v - 1.5) < b / 2 + 0.25;
+      scatter(u, v, 3, 3, ground === 'paving' ? 2 : 4, ground === 'paving' ? ['nature/trees/oak-small.png'] : TREES, off, 0.6);
+    }
+
+    // Downtown blocks: the template mix, plus a share of the new buildings.
+    const downtownFree = free.filter(c => c.type === 'downtown' && !c.civic);
     const mix = Object.entries(BLOCK_MIX), total = mix.reduce((t, [, w]) => t + w, 0);
-    const plan = mix.flatMap(([k, w]) => Array(Math.round(w / total * free.length)).fill(k));
-    while (plan.length < free.length) plan.push('row');
+    const plan = mix.flatMap(([k, w]) => Array(Math.round(w / total * downtownFree.length)).fill(k));
+    while (plan.length < downtownFree.length) plan.push('row');
     shuffle(plan);
-    free.forEach((c, k) => T[plan[k]](roadAt(c.i) + 1, roadAt(c.j) + 1));
+    downtownFree.forEach((c, k) => T[plan[k]](roadAt(c.i) + 1, roadAt(c.j) + 1));
+    for (const lot of lots) {                       // swap some bare lots for new buildings
+      const onStreet = Math.abs((lot[4] - ROAD0) % PITCH) < 0.01;      // front edge on the block's +v road
+      if (onStreet && BARE.includes(lot[0]) && lot[2] - lot[1] >= 1.5 && lot[4] - lot[3] >= 1.25 && rng() < 0.35) {
+        const name = pick(DOWNTOWN_ART), [a, b] = fp(name);
+        if (a <= lot[2] - lot[1] + 0.05 && b <= lot[4] - lot[3] + 0.05) {
+          // At the street edge of its lot, leaving the back row's entrances clear.
+          const cu = (lot[1] + lot[2]) / 2, front = lot[4] - 0.08;
+          lot.splice(0, 5, 'art:' + name, cu - a / 2, cu + a / 2, front - b, front);
+        }
+      }
+    }
+
+    for (const c of free) {
+      const u = roadAt(c.i) + 1, v = roadAt(c.j) + 1;
+      if (c.type === 'downtown') { if (c.civic) civicCell(c, u, v, 'paving'); continue; }
+      if (c.type === 'suburb') {
+        if (c.civic) { civicCell(c, u, v, 'grass'); continue; }
+        grassy(u, v);
+        // Houses face the street on the cell's +v side (entrances are on
+        // each sprite's +v front): the diner or a wide house alone, else two
+        // houses side by side; trees and bushes go in the backyards.
+        const wide = c.diner || rng() < 0.2;
+        const names = wide ? [c.diner ? 'houses/diner.png' : 'houses/house-4.png']
+          : [pick(HOUSES.filter(n => fp(n)[0] <= 1.3)), pick(HOUSES.filter(n => fp(n)[0] <= 1.3))];
+        let back = v + 3;
+        names.forEach((name, k) => {
+          const [a, b] = fp(name);
+          const slot = wide ? 3 : 1.5, su = u + k * slot;
+          const cu = su + slot / 2 + (rng() - 0.5) * Math.max(0, slot - a - 0.2);
+          const cv = v + 3 - (name === 'houses/diner.png' ? 1.25 : 0.5) - b / 2 - rng() * 0.2;
+          artLot(name, cu, cv, c.district);
+          back = Math.min(back, cv - b / 2);
+          if (rng() < 0.35 && !wide) artProp('nature/flowers/flower-bed.png', su + (k ? 1.3 : 0.2), cv + b / 2 + 0.25);
+        });
+        if (back - v > 0.6) scatter(u, v, 3, back - v - 0.15, 2 + Math.floor(rng() * 3), [...TREES, ...BUSHES], () => false, 0.55);
+        continue;
+      }
+      if (c.type === 'plaza') {
+        if (c.civic) { civicCell(c, u, v, 'paving'); continue; }
+        pave(u, v);
+        if (c.square) {                             // the district's square: fountain, benches, trees
+          setGround(u + 1, v + 1, 'pool');
+          for (const [cu, cv] of [[0.4, 0.4], [2.6, 0.4], [0.4, 2.6], [2.6, 2.6]]) artProp('nature/trees/oak-small.png', u + cu, v + cv);
+          prop('props/bench-ne.png', u + 1.5, v + 0.55);
+          prop('props/bench-nw.png', u + 0.55, v + 1.5);
+          prop('props/bench-ne.png', u + 1.5, v + 2.5);
+          prop('props/bench-nw.png', u + 2.5, v + 1.5);
+          prop('lamp-white.png', u + 0.9, v + 0.9);
+          prop('lamp-white.png', u + 2.2, v + 2.2);
+          continue;
+        }
+        // One building facing the street, a small square behind it.
+        const name = pick(PLAZA_BUILDINGS), [a, b] = fp(name);
+        const cv = v + 3 - 0.55 - b / 2;
+        artLot(name, u + 1.5 - (name === 'buildings/fastfood.png' ? 0.3 : 0), cv, c.district);
+        const yard = cv - b / 2 - 0.3 - v;
+        if (yard > 0.5) {
+          prop('props/bench-ne.png', u + 1.0, v + yard * 0.5);
+          prop(pick(PLANTERS), u + 0.35, v + 0.3);
+          prop(pick(PLANTERS), u + 2.65, v + 0.3);
+          artProp('nature/trees/oak-small.png', u + 2.1, v + yard * 0.45);
+          if (rng() < 0.5) prop('lamp-white.png', u + 1.6, v + 0.25);
+        }
+        continue;
+      }
+    }
+
+    // Parks: one region per park district, grass, groves, ponds and a path.
+    districts.forEach((d, id) => {
+      if (d.type !== 'park') return;
+      const tiles = [];
+      for (const c of cells.values()) {
+        if (c.district !== id) continue;
+        for (let u = roadAt(c.i); u <= roadAt(c.i) + BLOCK + 1; u++) for (let v = roadAt(c.j); v <= roadAt(c.j) + BLOCK + 1; v++) {
+          if (!isRoad(u, v) && !groundMap.has(key(u, v))) tiles.push([u, v]);
+        }
+      }
+      const inPark = new Set(tiles.map(([u, v]) => key(u, v)));
+      for (const [u, v] of tiles) setGround(u, v, rng() < 0.2 ? 'art/ground/grass-flowers' : pick(['art/ground/grass-lush', 'art/ground/grass-a', 'art/ground/grass-b']));
+      const water = new Set();
+      for (let k = 0, n = 1 + Math.floor(tiles.length / 90); k < n; k++) {
+        const [u, v] = pick(tiles);
+        if (NB4.every(([a, b]) => inPark.has(key(u + a, v + b)))) { setGround(u, v, rng() < 0.6 ? 'pond' : 'pool'); water.add(key(u, v)); }
+      }
+      // A dirt path wandering across the park.
+      const path = new Set();
+      let [pu, pv] = pick(tiles), dir = pick(NB4);
+      for (let k = 0; k < tiles.length / 3; k++) {
+        if (!water.has(key(pu, pv))) { setGround(pu, pv, 'art/ground/dirt'); path.add(key(pu, pv)); }
+        if (rng() < 0.25) dir = pick(NB4);
+        if (!inPark.has(key(pu + dir[0], pv + dir[1]))) { dir = pick(NB4); continue; }
+        pu += dir[0]; pv += dir[1];
+        if (k % 7 === 3) prop(rng() < 0.5 ? 'props/bench-ne.png' : 'props/bench-nw.png', pu + 0.5, pv + 0.2);
+      }
+      const species = shuffle([...TREES]).slice(0, 3);
+      for (const [u, v] of tiles) {
+        const k = key(u, v);
+        if (water.has(k) || path.has(k)) continue;
+        const dense = field(u / 4 + 3, v / 4 + 3);
+        const n = rng() < dense * 1.1 ? 1 + Math.floor(rng() * 2 * dense + rng()) : (rng() < 0.12 ? 1 : 0);
+        scatter(u, v, 1, 1, n, rng() < 0.85 ? species : BUSHES, () => false, 0.5);
+        if (rng() < 0.03) artProp(rng() < 0.5 ? 'nature/rocks/rocks.png' : 'nature/rocks/rocks-small.png', u + rng(), v + rng());
+      }
+    });
 
     // Planters along the camera-facing verge.
     for (const k of land) {
@@ -423,6 +651,44 @@
       const [u, v] = k.split(',').map(Number);
       if ((!isLand(u + 1, v) || !isLand(u, v + 1)) && rng() < 0.3) prop(pick(PLANTERS), u + 0.5, v + 0.5);
     }
+
+    // Entrances: every building's door is on its +v front. Keep a clear
+    // DOOR-deep strip in front of it, and (new sprites) their pad and any
+    // part drawn outside the footprint, free of props; count buildings that
+    // intrude on another's entrance (tools/sim.js fails on any).
+    const DOOR = 0.4;
+    const EXTRA = {                                  // sprite ground beyond the footprint: [-u, +u, -v, +v]
+      'buildings/brick-4.png': [0, 0, 0, 0.55], 'houses/diner.png': [0.2, 0.35, 0.15, 0.7],
+      'buildings/fastfood.png': [0.14, 0.62, 0.14, 0.2], 'buildings/apartment-2.png': [0.26, 0.26, 0.26, 0.3],
+      'civic/church.png': [0.04, 0.04, 0, 0.45], 'civic/bank.png': [0, 0, 0, 0.4],
+    };
+    const footprint = lot => {
+      if (lot[0].startsWith('art:')) return [lot[1], lot[2], lot[3], lot[4]];
+      const b = BUILDINGS[lot[0]], cu = (lot[1] + lot[2]) / 2, cv = (lot[3] + lot[4]) / 2;
+      return [cu - b.a / 2, cu + b.a / 2, cv - b.b / 2, cv + b.b / 2];
+    };
+    const keepouts = [], doors = [];
+    for (const lot of lots) {
+      const f = footprint(lot), cu = (f[0] + f[1]) / 2, w = Math.min(f[1] - f[0], 0.9);
+      const name = lot[0].slice(4), x = EXTRA[name] || [0.14, 0.14, 0.14, 0.14];
+      const door = [cu - w / 2, cu + w / 2, f[3] + (x[3] > 0.2 ? x[3] : 0), f[3] + Math.max(x[3], 0) + DOOR];
+      doors.push([lot, door]);
+      keepouts.push(door);
+      if (lot[0].startsWith('art:')) keepouts.push([f[0] - x[0], f[1] + x[1], f[2] - x[2], f[3] + x[3]]);
+    }
+    const inside = (r, u, v) => u > r[0] && u < r[1] && v > r[2] && v < r[3];
+    for (let k = props.length - 1; k >= 0; k--) {
+      if (keepouts.some(r => inside(r, props[k][1], props[k][2]))) props.splice(k, 1);
+    }
+    const blocked = [];
+    for (const [lot, d] of doors) {
+      for (const other of lots) {
+        if (other === lot) continue;
+        const f = footprint(other);
+        if (f[0] < d[1] - 0.01 && f[1] > d[0] + 0.01 && f[2] < d[3] - 0.01 && f[3] > d[2] + 0.01) { blocked.push([lot, other]); break; }
+      }
+    }
+    const blockedDoors = blocked.length;
 
     const nearSignal = (u, v) => NB4.some(([du, dv]) => signalAt.has(key(u + du, v + dv)));
 
@@ -454,8 +720,10 @@
 
     const toTiles = r => r.map(([i, j]) => [roadAt(i), roadAt(j)]);
     return {
-      ground, isRoad, isLand, lots, props, signals, signalAt, rng, pick,
+      ground, isRoad, isLand, junction, lots, props, signals, signalAt, rng, pick,
       routes: routes.map(toTiles), NU: nu, NV: nv, IU, IV, cells: cells.size,
+      districts: districts.map(d => d.type), blockedDoors, blocked,
+      cellList: [...cells.values()].map(c => [c.i, c.j, c.type, c.sup >= 0]),
     };
   }
 
@@ -510,7 +778,7 @@
     return out;
   }
 
-  function buildPath(raw, signalAt, ground, half = CAR_HALF, closed = true) {
+  function buildPath(raw, signalAt, ground, half = CAR_HALF, closed = true, junction = () => false) {
     // Resample to even spacing so speed is constant along curves.
     const seg = [];
     let total = 0;
@@ -555,7 +823,9 @@
         stops.push({ s: ((s % pathLen) + pathLen) % pathLen, sig: k, axis: Math.abs(h[0]) > Math.abs(h[1]) ? 'u' : 'v' });
       }
     });
-    return { samples, heads, stops, total: pathLen, step: STEP, closed };
+    // Samples inside a junction (for "don't block the box").
+    const box = Uint8Array.from(samples, p => (junction(Math.floor(p[0]), Math.floor(p[1])) ? 1 : 0));
+    return { samples, heads, stops, total: pathLen, step: STEP, closed, box };
   }
 
   /* ---------- rendering helpers ---------- */
@@ -845,7 +1115,7 @@
       const a = pts[k], b = pts[k + 2];
       return !((a[0] === p[0] && p[0] === b[0]) || (a[1] === p[1] && p[1] === b[1]));
     });
-    return { path: buildPath(routeLane(from.tile, corners, end.tile), city.signalAt, city.ground, HERO_HALF, false), end };
+    return { path: buildPath(routeLane(from.tile, corners, end.tile), city.signalAt, city.ground, HERO_HALF, false, city.junction), end };
   }
   const firstSpot = (() => {
     for (let tries = 0; tries < 500; tries++) {
@@ -871,7 +1141,10 @@
       mark = performance.now();
     };
 
+    // Sprites drawn by tools/art.py, described by their manifest.
+    const art = await fetch(base + 'art/manifest.json').then(r => (r.ok ? r.json() : {}), () => ({}));
     const srcs = new Set([
+      ...Object.keys(art).filter(k => !k.startsWith('ground/shore')).map(k => 'art/' + k),
       ...Object.values(ROAD_TILES).map(([n]) => `tiles/${n}.png`),
       ...['grass', 'paving', 'pond', 'pool', 'canal'].map(n => `tiles/${n}.png`),
       ...Object.values(BUILDINGS).map(b => b.src),
@@ -887,7 +1160,7 @@
     const urlSeed = new URLSearchParams(location.search).get('seed');
     const seed = root.dataset.seed ? Number(root.dataset.seed)
       : urlSeed ? Number(urlSeed) : Math.floor(Math.random() * 2 ** 31);
-    const city = generate(mulberry32(seed));
+    const city = generate(mulberry32(seed), art);
     setWorld(city.NU, city.NV);
     if (debug) console.log(`pixel-city: seed ${seed}, ${city.cells} cells, ${city.NU}×${city.NV} tiles`);
     await phase('generate');
@@ -929,7 +1202,7 @@
           if (!gr) continue;
           const sw = !city.isLand(u, v + 1), se = !city.isLand(u + 1, v);
           if (sw || se) drawSlab(g, u, v, sw, se, x, x + w);
-          drawTile(g, img[`tiles/${gr[0]}.png`], u, v, gr[1]);
+          drawTile(g, img[gr[0].startsWith('art/') ? gr[0] + '.png' : `tiles/${gr[0]}.png`], u, v, gr[1]);
         }
       }
     }
@@ -948,14 +1221,21 @@
     const pointBox = (u, v) => [u - 0.05, u + 0.05, v - 0.05, v + 0.05];
 
     for (const [kind, u0, u1, v0, v1] of city.lots) {
-      const b = BUILDINGS[kind];
       const cu = (u0 + u1) / 2, cv = (v0 + v1) / 2;
+      if (kind.startsWith('art:')) {                     // anchored at the footprint center
+        const name = kind.slice(4), m = art[name], [a, b] = m.footprint || [1, 1];
+        const [x, y] = iso(cu, cv);
+        addStatic(() => img['art/' + name], x - m.anchor[0], y - m.anchor[1],
+          [cu - a / 2, cu + a / 2, cv - b / 2, cv + b / 2]);
+        continue;
+      }
+      const b = BUILDINGS[kind];
       const [x, y] = iso(cu + b.a / 2, cv + b.b / 2);
       addStatic(() => img[b.src], x - b.base[0], y - b.base[1],
         [cu - b.a / 2, cu + b.a / 2, cv - b.b / 2, cv + b.b / 2]);
     }
     for (const [src, u, v] of city.props) {
-      const [ax, ay] = PROP_ANCHORS[src];
+      const [ax, ay] = src.startsWith('art/') ? art[src.slice(4)].anchor : PROP_ANCHORS[src];
       const [x, y] = iso(u, v);
       addStatic(() => img[src], x - ax, y - ay, pointBox(u, v));
     }
@@ -1061,7 +1341,7 @@
     const hero = { id: 0, type: HERO_TYPE, path: heroPath, s: 0, speed: 0, roll: 0, ...bumpState(), parked: 0,
       pos: heroPath.samples[0], head: heroPath.heads[0], box: null, hero: true };
     const cars = [hero];
-    for (const path of city.routes.map(r => buildPath(loopLane(r), city.signalAt, city.ground))) {
+    for (const path of city.routes.map(r => buildPath(loopLane(r), city.signalAt, city.ground, CAR_HALF, true, city.junction))) {
       const count = Math.max(1, Math.round(path.total / TILES_PER_CAR));
       for (let c = 0; c < count; c++) {
         for (let tries = 0; tries < 20; tries++) {
@@ -1104,7 +1384,7 @@
     // unless every car in the loop is.
     function breaksLoop(car, first, kind) {
       const loop = [[car, kind]];
-      for (let c = first, i = 0; c && i < 8; c = c.blocker, i++) {
+      for (let c = first, i = 0; c && i < 64; c = c.blocker, i++) {
         if (c === car) {
           const yielding = loop.filter(([, k]) => k === 'yield');
           const pool = yielding.length ? yielding : loop;
@@ -1218,7 +1498,7 @@
 
     // The hero pulling out from the curb waits for the lane behind to clear.
     function mergeGap(car) {
-      if (!car.hero || car.s > PULL || car.speed > 0.2) return Infinity;
+      if (!car.hero || car.s > PULL || car.speed > 0.2) return [Infinity, null];
       const h = car.head;
       for (const o of nearby(car)) {
         if (o === car || h[0] * o.head[0] + h[1] * o.head[1] < 0.5) continue;
@@ -1226,9 +1506,9 @@
         const back = -(du * h[0] + dv * h[1]), side = Math.abs(du * h[1] - dv * h[0]);
         if (back < -halfL(car) || back > 3 || side > 0.5) continue;
         const tO = arriveTime(o.speed, back - GAP);
-        if (tO < arriveTime(0, PULL - car.s) + CROSS_MARGIN) return 0;
+        if (tO < arriveTime(0, PULL - car.s) + CROSS_MARGIN) return [0, o];
       }
-      return Infinity;
+      return [Infinity, null];
     }
 
     // Cars bucketed by BUCKET-tile squares each step, so a car only checks
@@ -1244,6 +1524,32 @@
         if (list) for (const o of list) out.push(o);
       }
       return out;
+    }
+
+    // Don't block the box: a car doesn't enter a junction if the slow or
+    // stopped car ahead leaves no room to stop beyond it; it waits before
+    // the junction instead, so crossing traffic keeps flowing. Returns the
+    // distance it may drive (Infinity if unconstrained).
+    function boxGap(car) {
+      const p = car.path, pts = car.probe.pts;
+      if (p.box[indexAhead(car, 0)]) return [Infinity, null];      // in one already: clear it
+      let dIn = -1, dOut = -1;
+      for (let k = 7; k < pts.length; k++) {                        // 0.1 .. 3.0 ahead
+        const inBox = p.box[indexAhead(car, pts[k][0])];
+        if (dIn < 0 && inBox) dIn = pts[k][0];
+        else if (dIn >= 0 && !inBox) { dOut = pts[k][0]; break; }
+      }
+      if (dIn < 0 || dOut < 0 || dIn - halfL(car) < -0.05) return [Infinity, null];
+      // Nearest slow car on the path within 3 tiles.
+      let lead = Infinity, who = null;
+      for (const o of nearby(car)) {
+        if (o === car || o.parked > 0 || o.speed > 0.3 || breaksLoop(car, o, 'yield')) continue;
+        for (let k = 7; k < pts.length && pts[k][0] < lead; k++) {
+          const q = pts[k][1];
+          if (Math.abs(q[0] - o.pos[0]) < 0.22 && Math.abs(q[1] - o.pos[1]) < 0.22) { lead = pts[k][0]; who = o; break; }
+        }
+      }
+      return lead - GAP < dOut + halfL(car) ? [dIn - halfL(car) - 0.05, who] : [Infinity, null];
     }
 
     function step(dt) {
@@ -1265,13 +1571,19 @@
           gap = ahead - GAP;
           blocker = o;
         }
+        // The binding constraint and whom it waits on: body (a car in the
+        // way) or yield (right of way, a merge or a junction hold), which
+        // the loop breaker may override.
         const [cross, yieldTo] = crossGap(car);
         car.yielding = cross < Infinity;
         let kind = 'body';
         if (cross < gap) [gap, blocker, kind] = [cross, yieldTo, 'yield'];
+        const [merge, mergeWho] = mergeGap(car);
+        if (merge < gap) [gap, blocker, kind] = [merge, mergeWho, 'yield'];
+        const [held, lead] = boxGap(car);
+        if (held < gap) [gap, blocker, kind] = [held, lead, 'yield'];
         car.blocker = gap < 0.05 ? blocker : null;
         car.blockKind = kind;
-        gap = Math.min(gap, mergeGap(car));
         for (const st of car.path.stops) {
           const state = light(st.sig, st.axis);
           if (state === 'green') continue;
@@ -1330,7 +1642,7 @@
       body: '#2b303b', bodyHi: '#454c5a', outline: '#07090d', button: '#1a1e26',
       speaker: '#161a22', lens: '#1d3b5c', home: '#5b6477',
       screen: '#0e1320', status: '#070a11', text: '#c9d1e0',
-      grass: '#1b2a25', paving: '#262f3f', water: '#1f3552', lot: '#2c3548', road: '#46526b',
+      grass: '#1b2a25', dirt: '#2e2a22', paving: '#262f3f', water: '#1f3552', lot: '#2c3548', road: '#46526b',
       ahead: '#ff4e00', behind: '#b8c1d3', car: '#ffffff', carEdge: '#0e1320',
     };
     const mmX = (u, v) => 1 + MM_HW * (NV + u - v);
@@ -1376,7 +1688,8 @@
           if (!gr) continue;                             // off the island
           const name = gr[0];
           const color = lotAt.has(u + ',' + v) ? MM_C.lot
-            : name === 'grass' ? MM_C.grass
+            : name.includes('grass') ? MM_C.grass
+            : name.includes('dirt') ? MM_C.dirt
             : name === 'paving' ? MM_C.paving
             : ['pond', 'pool', 'canal'].includes(name) ? MM_C.water
             : MM_C.road;

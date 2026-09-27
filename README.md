@@ -40,9 +40,10 @@ Then open http://localhost:8080. URL switches for checking things:
 - `?debug`: log startup phase times, the seed and chunk bakes
 
 `node tools/sim.js [seconds] [seed]` runs the real `js/city.js` headless:
-it reports the city (cells, size, lights, traffic loops, cars), checks that
-every road is connected, and runs the traffic to count close calls, stuck
-cars and `step()` time.
+it reports the city (cells, size, lights, traffic loops, cars, districts),
+checks that every road is connected, that no district has two of the same
+civic building and that no building's entrance is blocked, then runs the
+traffic to count close calls, stuck cars and `step()` time.
 
 ## Assets
 

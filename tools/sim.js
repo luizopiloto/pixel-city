@@ -4,7 +4,10 @@
 //
 //   node tools/sim.js [seconds=120] [seed=random] [--quiet] [--dump=map.json]
 //
-// Exits non-zero if the roads are disconnected or traffic gridlocks.
+// Exits non-zero if the roads are disconnected, traffic gridlocks, a district
+// has two of the same civic building or a building's entrance is blocked.
+// DIAG=1 lists stuck cars and what each waits on; DOORS=1 tallies blocked
+// entrances by building and blocker.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -29,6 +32,10 @@ global.document = { createElement: el, getElementById: () => null, querySelector
 global.Image = class { set src(v) { this.width = 64; this.height = 64; setTimeout(() => this.onload()); } };
 global.ResizeObserver = global.IntersectionObserver = class { observe() {} disconnect() {} };
 global.requestAnimationFrame = cb => setTimeout(() => cb(performance.now()), 0);
+global.fetch = async url => {                    // assets from disk
+  const file = path.join(__dirname, '..', url);
+  return fs.existsSync(file) ? { ok: true, json: async () => JSON.parse(fs.readFileSync(file, 'utf8')) } : { ok: false };
+};
 
 root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
   // City stats and road connectivity (flood fill over road tiles).
@@ -43,6 +50,15 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
     }
   }
   const connected = seen.size === roads.length;
+  // Civic landmarks: at most one of each per district.
+  const civic = new Map();
+  let duplicates = 0;
+  for (const [kind, , , , , district] of city.lots) {
+    if (!kind.startsWith('art:civic/')) continue;
+    const k = district + ':' + kind;
+    if (civic.has(k)) duplicates++;
+    civic.set(k, (civic.get(k) || 0) + 1);
+  }
   const dump = process.argv.find(a => a.startsWith('--dump='));
   if (dump) {                                  // ground names per tile, for a map image
     const grid = [];
@@ -51,10 +67,12 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
       for (let v = 0; v < city.NV; v++) { const g = city.ground(u, v); row.push(g ? (city.isRoad(u, v) ? 'road' : g[0]) : ''); }
       grid.push(row);
     }
-    fs.writeFileSync(dump.slice(7), JSON.stringify({ NU: city.NU, NV: city.NV, grid, lots: city.lots }));
+    fs.writeFileSync(dump.slice(7), JSON.stringify({ NU: city.NU, NV: city.NV, grid, lots: city.lots, cells: city.cellList }));
   }
   console.log(`seed ${usedSeed}: ${city.cells} cells, ${city.NU}×${city.NV} tiles, ${city.signals.length} lights, ` +
-    `${city.routes.length} loops, ${cars.length} cars, roads ${connected ? 'connected' : `DISCONNECTED (${seen.size}/${roads.length})`}`);
+    `${city.routes.length} loops, ${cars.length} cars, roads ${connected ? 'connected' : `DISCONNECTED (${seen.size}/${roads.length})`}` +
+    `, districts ${city.districts.join('/')}, ${civic.size} civic${duplicates ? `, ${duplicates} DUPLICATE civic` : ''}` +
+    `, ${city.blockedDoors ? `${city.blockedDoors} BLOCKED entrances` : 'entrances clear'}`);
 
   // Traffic: close calls between crossing cars, gridlock, step() time.
   const hero = cars[0], dt = 1 / 60, close = new Set();
@@ -81,12 +99,28 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
     }
   }
   const stopped = cars.filter(c => c.speed < 0.01 && !c.parked).length;
+  if (process.env.DOORS) {                     // which entrances are blocked, and by what
+    const tally = new Map();
+    for (const [lot, by] of city.blocked) {
+      const k = `${lot[0]} (${(lot[4] - lot[3]).toFixed(2)} deep lot) <- ${by[0]}`;
+      tally.set(k, (tally.get(k) || 0) + 1);
+    }
+    [...tally].sort((a, b) => b[1] - a[1]).slice(0, 15).forEach(([k, n]) => console.log(`  ${n} × ${k}`));
+  }
+  if (process.env.DIAG) {                      // who is stuck, and on whom
+    for (const c of cars.filter(c => c.speed < 0.01 && !c.parked)) {
+      const b = c.blocker;
+      console.log(`  car ${c.id} at ${c.pos.map(n => n.toFixed(2))} head ${c.head.map(n => n.toFixed(1))} ` +
+        `light ${c.atLight} yield ${c.yielding} blockKind ${c.blockKind} blocker ${b ? b.id : '-'}` +
+        (b ? ` (at ${b.pos.map(n => n.toFixed(2))}, speed ${b.speed.toFixed(2)})` : ''));
+    }
+  }
   const avg = cars.reduce((t, c) => t + c.speed, 0) / cars.length;
   const gridlock = stopped > cars.length * 0.3;
   console.log(`  ${seconds}s: close calls ${events}, closest crossing ${minCross.toFixed(2)}, ` +
     `${stopped} stopped, avg speed ${avg.toFixed(2)}, hero routes ${routes}, ` +
     `step ${(total / (seconds * 60)).toFixed(3)} ms avg / ${worst.toFixed(2)} ms worst${gridlock ? ', GRIDLOCK' : ''}`);
-  process.exitCode = connected && !gridlock ? 0 : 1;
+  process.exitCode = connected && !gridlock && !duplicates && !city.blockedDoors ? 0 : 1;
   process.exit();
 };
 
