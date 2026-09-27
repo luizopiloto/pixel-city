@@ -60,6 +60,7 @@
     office:  { src: 'buildings/tower-bare.png',  base: [86, 128],    a: 1.344, b: 0.656 },
   };
   const DRESSED = ['tower', 'corner', 'house', 'cafe'];
+  const CAFE_ODDS = 0.04;                          // the coffee shop, among the dressed buildings
   const BARE = ['kiosk', 'cottage', 'flats', 'office'];
 
   // Ground contact point of each prop, in sprite pixels.
@@ -99,10 +100,10 @@
     park: [],
   };
   const HOUSES = [1, 2, 3, 4, 5, 6].map(n => `houses/house-${n}.png`);
-  // Plaza fronts: food and shops first, so burgers are one choice among many.
-  const PLAZA_BUILDINGS = ['buildings/pizza.png', 'buildings/bistro.png', 'buildings/cakes.png', 'buildings/toys.png',
-    'buildings/pizza.png', 'buildings/bistro.png', 'buildings/cakes.png', 'buildings/toys.png',
-    'buildings/bakery.png', 'buildings/bakery.png', 'buildings/shop-6.png', 'buildings/shop-7.png', 'buildings/fastfood.png',
+  // Plaza fronts: every plaza district gets one of each PLAZA_MUST, then
+  // the rest cycle through all the designs.
+  const PLAZA_MUST = ['fastfood', 'pizza', 'bistro', 'cakes', 'bakery', 'toys'].map(n => `buildings/${n}.png`);
+  const PLAZA_BUILDINGS = [...PLAZA_MUST, 'buildings/shop-6.png', 'buildings/shop-7.png',
     'buildings/apartment-1.png', 'buildings/apartment-2.png'];
   const DOWNTOWN_ART = ['shop-7', 'shop-6', 'shop-15', 'brick-3', 'brick-4', 'brick-11', 'brick-12', 'office-8',
     'office-9', 'office-10', 'apartment-1', 'apartment-13', 'apartment-14', 'hotel'].map(n => `buildings/${n}.png`);
@@ -215,6 +216,7 @@
     };
     const key = (a, b) => a + ',' + b;
     const NB4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const pickDressed = () => (rng() < CAFE_ODDS ? 'cafe' : pick(DRESSED.filter(n => n !== 'cafe')));
 
     // Downtown: grow a blob of cells from the center. Frontier cells with
     // more filled neighbors are likelier (compact shape); a smooth random
@@ -440,7 +442,7 @@
       twin(u, v) {
         // Back building against the block's back edge, front one on the
         // street, so the back one's entrance faces open ground.
-        const p = shuffle([...DRESSED]), b0 = BUILDINGS[p[0]].b, b1 = BUILDINGS[p[1]].b;
+        const p = [pickDressed(), pickDressed()], b0 = BUILDINGS[p[0]].b, b1 = BUILDINGS[p[1]].b;
         lots.push([p[0], u, u + 3, v + 0.06, v + 0.06 + b0], [p[1], u, u + 3, v + 2.94 - b1, v + 2.94]);
         prop(pick(PLANTERS), u + 0.22, v + 0.4 + rng() * 2.2);
         if (rng() < 0.6) prop('lamp.png', u + 2.8, v + 0.18);
@@ -456,7 +458,7 @@
       },
       mixed(u, v) {
         pave(u, v);
-        const back = pick(DRESSED), b0 = BUILDINGS[back].b;
+        const back = pickDressed(), b0 = BUILDINGS[back].b;
         lots.push([back, u, u + 3, v + 0.06, v + 0.06 + b0]);
         lots.push([pick(BARE), u, u + 1.5, v + 1.5, v + 3], [pick(BARE), u + 1.5, u + 3, v + 1.5, v + 3]);
       },
@@ -485,7 +487,7 @@
       },
       plaza(u, v) {
         pave(u, v);
-        lots.push([pick(['cafe', 'tower']), u, u + 3, v + 0.25, v + 1.75]);
+        lots.push([rng() < 0.15 ? 'cafe' : 'tower', u, u + 3, v + 0.25, v + 1.75]);
         prop('props/bench-ne.png', u + 0.7, v + 2.5);
         prop('props/bench-ne.png', u + 2.1, v + 2.5);
         prop('props/bin-gray.png', u + 1.45, v + 2.75);
@@ -525,7 +527,7 @@
             if (fits.length && rng() < 0.5) {
               const n = pick(fits);
               artLot(n, u + w / 2, v + ROW - 0.03 - fp(n)[1] / 2);
-            } else lots.push([w > 2 ? pick(DRESSED) : pick(BARE), u, u + w, v, v + ROW]);
+            } else lots.push([w > 2 ? pickDressed() : pick(BARE), u, u + w, v, v + ROW]);
           }
           u += w;
         }
@@ -676,7 +678,7 @@
       for (const v of [v0, v1 - ROW]) {
         let u = u0 + rest / 2;
         for (const w of cols) {
-          lots.push([w > 2 ? pick(DRESSED) : pick(BARE), u, u + w, v, v + ROW]);
+          lots.push([w > 2 ? pickDressed() : pick(BARE), u, u + w, v, v + ROW]);
           u += w;
         }
       }
@@ -844,6 +846,21 @@
 
     supers.filter(sb => sb.type === 'suburb').forEach(sb => (sb.kind === 'square' ? suburbSquare : suburbBlock)(sb));
     supers.filter(sb => sb.kind === 'cats').forEach(catsBlock);
+    // Plaza fronts: in each plaza district one of every must-have shop first,
+    // then the rest from a shuffled deck of all the designs (reshuffled when
+    // it runs out), never the same shop as a neighbouring block.
+    districts.forEach((d, id) => {
+      if (d.type !== 'plaza') return;
+      const spots = shuffle(free.filter(c => c.district === id && c.type === 'plaza' && !c.civic && !c.square));
+      let deck = [];
+      const draw = c => {
+        if (!deck.length) deck = shuffle([...PLAZA_BUILDINGS]);
+        const nb = NB4.map(([a, b]) => cellAt(c.i + a, c.j + b)).filter(Boolean).map(o => o.shop);
+        const k = deck.findIndex(n => !nb.includes(n));
+        return deck.splice(k < 0 ? 0 : k, 1)[0];
+      };
+      spots.forEach((c, k) => { c.shop = k < PLAZA_MUST.length ? PLAZA_MUST[k] : draw(c); });
+    });
     for (const c of free) {
       const u = roadAt(c.i) + 1, v = roadAt(c.j) + 1;
       if (c.type === 'downtown') { if (c.civic) civicCell(c, u, v, 'paving'); continue; }
@@ -875,7 +892,7 @@
           continue;
         }
         // One building facing the street, a small square behind it.
-        const name = pick(PLAZA_BUILDINGS), [a, b] = fp(name);
+        const name = c.shop, [a, b] = fp(name);
         const cv = v + 3 - 0.55 - b / 2;
         const patio = name === 'buildings/fastfood.png' || name === 'buildings/bistro.png';     // drawn on the +u side
         const cu = u + 1.5 - (patio ? 0.3 : 0);
