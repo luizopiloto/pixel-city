@@ -76,9 +76,11 @@
 
   // Downtown: a compact random blob of DOWNTOWN_CELLS block cells, with
   // SUPER_COUNT superblocks (3×2 / 2×3 cells merged, inner roads removed)
-  // and one long block (1×2, 1×3, 2×1 or 3×1 merged) per CELLS_PER_LONG cells.
-  const DOWNTOWN_CELLS = 256, SUPER_COUNT = 8, CELLS_PER_LONG = 16;
-  const LONG_SHAPES = [[1, 2], [1, 3], [2, 1], [3, 1]];
+  // and one long block (1×2, 1×3, 2×1 or 3×1 merged) per CELLS_PER_LONG
+  // downtown cells, mostly 1×2 / 2×1; suburbs get one per SUBURB_PER_LONG.
+  const DOWNTOWN_CELLS = 256, SUPER_COUNT = 8, CELLS_PER_LONG = 7, SUBURB_PER_LONG = 6;
+  const LONG_SHAPES = [[1, 2], [1, 2], [1, 2], [2, 1], [2, 1], [2, 1], [1, 3], [3, 1]];
+  const SUBURB_SHAPES = [[1, 2], [1, 3], [2, 1], [3, 1]];
   // Districts attached to downtown's sides: [type, min cells, max cells].
   const DISTRICTS = { suburb: [40, 60], park: [22, 36], plaza: [22, 32] };
   // Civic landmarks each district type may get: at most one of each per
@@ -308,25 +310,29 @@
     // superblocks, kept apart from each other, then the long 1×2 … 3×1
     // blocks, which may sit beside other merged blocks but never overlap.
     const supers = [];
-    function merge(count, shapes, apart) {
+    function merge(count, shapes, apart, type = 'downtown', district = -1) {
       for (let tries = 0, placed = 0; placed < count && tries < 4000; tries++) {
         const [bw, bh] = shapes[Math.floor(rng() * shapes.length)];
         const bi = Math.floor(rng() * (IU - bw + 1)), bj = Math.floor(rng() * (IV - bh + 1));
         let ok = true;
         for (let a = bi - 1; a <= bi + bw && ok; a++) for (let b = bj - 1; b <= bj + bh && ok; b++) {
           const c = cellAt(a, b), inside = a >= bi && a < bi + bw && b >= bj && b < bj + bh;
-          if (inside && (!c || c.type !== 'downtown' || c.sup >= 0)) ok = false;
+          if (inside && (!c || c.type !== type || c.sup >= 0 || (district >= 0 && c.district !== district))) ok = false;
           if (apart && c && c.sup >= 0) ok = false;
         }
         if (!ok) continue;
         const k = supers.length;
         for (let a = bi; a < bi + bw; a++) for (let b = bj; b < bj + bh; b++) cellAt(a, b).sup = k;
-        supers.push({ bi, bj, bw, bh, u0: roadAt(bi) + 1, u1: roadAt(bi + bw), v0: roadAt(bj) + 1, v1: roadAt(bj + bh) });
+        supers.push({ type, district: cellAt(bi, bj).district, bi, bj, bw, bh, u0: roadAt(bi) + 1, u1: roadAt(bi + bw), v0: roadAt(bj) + 1, v1: roadAt(bj + bh) });
         placed++;
       }
     }
     merge(SUPER_COUNT, [[3, 2], [2, 3]], true);
-    merge(Math.round(cells.size / CELLS_PER_LONG), LONG_SHAPES, false);
+    const typed = (t, d = -1) => [...cells.values()].filter(c => c.type === t && (d < 0 || c.district === d)).length;
+    merge(Math.round(typed('downtown') / CELLS_PER_LONG), LONG_SHAPES, false);
+    districts.forEach((d, id) => {
+      if (d.type === 'suburb') merge(Math.round(typed('suburb', id) / SUBURB_PER_LONG), SUBURB_SHAPES, false, 'suburb', id);
+    });
 
     // Roads: a segment between two lattice nodes exists when a cell beside
     // it is part of the city, unless both sides are the same superblock.
@@ -507,7 +513,7 @@
       }
     }
 
-    supers.forEach(downtown);
+    supers.filter(sb => sb.type === 'downtown').forEach(downtown);
 
     // Art sprites (assets/art, see tools/art.py) stand at their footprint
     // center: lots as ['art:<name>', u0, u1, v0, v1, district], props as
@@ -526,6 +532,44 @@
     const grassy = (u, v, lu = BLOCK, lv = BLOCK) => {
       for (let du = 0; du < lu; du++) for (let dv = 0; dv < lv; dv++) setGround(u + du, v + dv, pick(GRASSES));
     };
+
+    // Houses along a street at `front` (their +v side, where entrances are),
+    // in 1.5-wide slots across lu: the diner or a wide house takes two.
+    // Returns the backmost house edge; backyards go behind it.
+    function houseRow(u0, lu, front, district, diner) {
+      const n = Math.floor(lu / 1.5), pad = (lu - n * 1.5) / 2;
+      const narrow = HOUSES.filter(h => fp(h)[0] <= 1.3);
+      let back = front;
+      for (let k = 0; k < n;) {
+        const wide = (diner && k === 0) || (k + 1 < n && rng() < (n === 2 ? 0.2 : 0.12));
+        const name = wide ? (diner && k === 0 ? 'houses/diner.png' : 'houses/house-4.png') : pick(narrow);
+        const [a, b] = fp(name);
+        const slot = wide ? 3 : 1.5, su = u0 + pad + k * 1.5;
+        const cu = su + slot / 2 + (rng() - 0.5) * Math.max(0, slot - a - 0.2);
+        const cv = front - (name === 'houses/diner.png' ? 1.25 : 0.5) - b / 2 - rng() * 0.2;
+        artLot(name, cu, cv, district);
+        back = Math.min(back, cv - b / 2);
+        if (rng() < 0.35 && !wide) {                  // at an outer front corner, inside the lot
+          const side = k === 0 ? -1 : k === n - 1 ? 1 : rng() < 0.5 ? -1 : 1;
+          const fu = Math.min(Math.max(cu + side * 0.62, su + 0.3), su + slot - 0.3);
+          artProp('nature/flowers/flower-bed.png', fu, cv + b / 2 + 0.2);
+        }
+        k += wide ? 2 : 1;
+      }
+      return back;
+    }
+    // Suburb long block: rows of houses every PITCH tiles, each facing its
+    // +v street or the backyard strip in front of it.
+    function suburbBlock(sb) {
+      const lu = sb.u1 - sb.u0, lv = sb.v1 - sb.v0, rows = Math.round((lv + 1) / PITCH);
+      grassy(sb.u0, sb.v0, lu, lv);
+      for (let r = 0; r < rows; r++) {
+        const front = sb.v1 - r * PITCH, top = r === rows - 1 ? sb.v0 : front - PITCH;
+        const back = houseRow(sb.u0, lu, front, sb.district, false);
+        const count = Math.round((2 + rng() * 3) * lu / BLOCK);
+        if (back - top > 0.6) scatter(sb.u0, top, lu, back - top - 0.15, count, [...TREES, ...BUSHES], () => false, 0.55);
+      }
+    }
 
     // Civic landmarks first: each district gets at most one of each kind
     // its type allows, on its own (non-merged) cells.
@@ -583,31 +627,14 @@
       }
     }
 
+    supers.filter(sb => sb.type === 'suburb').forEach(suburbBlock);
     for (const c of free) {
       const u = roadAt(c.i) + 1, v = roadAt(c.j) + 1;
       if (c.type === 'downtown') { if (c.civic) civicCell(c, u, v, 'paving'); continue; }
       if (c.type === 'suburb') {
         if (c.civic) { civicCell(c, u, v, 'grass'); continue; }
         grassy(u, v);
-        // Houses face the street on the cell's +v side (entrances are on
-        // each sprite's +v front): the diner or a wide house alone, else two
-        // houses side by side; trees and bushes go in the backyards.
-        const wide = c.diner || rng() < 0.2;
-        const names = wide ? [c.diner ? 'houses/diner.png' : 'houses/house-4.png']
-          : [pick(HOUSES.filter(n => fp(n)[0] <= 1.3)), pick(HOUSES.filter(n => fp(n)[0] <= 1.3))];
-        let back = v + 3;
-        names.forEach((name, k) => {
-          const [a, b] = fp(name);
-          const slot = wide ? 3 : 1.5, su = u + k * slot;
-          const cu = su + slot / 2 + (rng() - 0.5) * Math.max(0, slot - a - 0.2);
-          const cv = v + 3 - (name === 'houses/diner.png' ? 1.25 : 0.5) - b / 2 - rng() * 0.2;
-          artLot(name, cu, cv, c.district);
-          back = Math.min(back, cv - b / 2);
-          if (rng() < 0.35 && !wide) {                  // at the outer front corner, inside the lot
-            const fu = Math.min(Math.max(cu + (k ? 0.62 : -0.62), su + 0.3), su + slot - 0.3);
-            artProp('nature/flowers/flower-bed.png', fu, cv + b / 2 + 0.2);
-          }
-        });
+        const back = houseRow(u, BLOCK, v + BLOCK, c.district, c.diner);
         if (back - v > 0.6) scatter(u, v, 3, back - v - 0.15, 2 + Math.floor(rng() * 3), [...TREES, ...BUSHES], () => false, 0.55);
         continue;
       }
