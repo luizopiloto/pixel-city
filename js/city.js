@@ -2601,6 +2601,7 @@
       }
 
       drawBeam(ctx);
+      drawTipLight(ctx);
       // The marker floats above everything so the hero is never lost.
       const [hx, hy] = heroScreen();
       const bob = Math.round(Math.sin(clock * 2.4) * 2);
@@ -2646,6 +2647,31 @@
       c.fillStyle = glow;
       c.fillRect(x - r, y - r, 2 * r, 2 * r);
       c.restore();
+    }
+
+    // Aircraft warning light on the TV tower's mast: a red flash with a glow
+    // once every 1.5 s (steady, dimmer, with reduced motion).
+    const tvLot = city.lots.find(l => l[0] === 'art:landmarks/tv-station.png');
+    const TIP = (art['landmarks/tv-station.png'] || {}).tip;
+    const calm = window.matchMedia('(prefers-reduced-motion: reduce)');
+    function drawTipLight(c) {
+      if (!tvLot || !TIP) return;
+      const [bx, by] = iso((tvLot[1] + tvLot[2]) / 2, (tvLot[3] + tvLot[4]) / 2);
+      const x = bx + TIP[0], y = by + TIP[1];
+      if (!overlap([x - 20, y - 20, 40, 40], [view.x, view.y, view.w, view.h])) return;
+      const t = (clock % 1.5) / 1.5;
+      const on = calm.matches ? 0.6 : Math.max(0, 1 - Math.abs(t - 0.1) / 0.12);
+      if (on <= 0) return;
+      c.save();
+      c.globalCompositeOperation = 'screen';
+      const r = 4 + 10 * on, glow = c.createRadialGradient(x, y, 0, x, y, r);
+      glow.addColorStop(0, `rgba(255, 120, 90, ${0.9 * on})`);
+      glow.addColorStop(1, 'rgba(255, 40, 20, 0)');
+      c.fillStyle = glow;
+      c.fillRect(x - r, y - r, 2 * r, 2 * r);
+      c.restore();
+      c.fillStyle = `rgba(255, 90, 70, ${on})`;
+      c.fillRect(Math.round(x) - 1, Math.round(y) - 1, 3, 3);
     }
 
     new ResizeObserver(() => { resize(); follow(Infinity); render(); }).observe(root);

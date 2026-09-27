@@ -2040,7 +2040,8 @@ def tv_station(seed):
     for z in range(H, H + 150, 4):                     # mast, striped, red light on top
         w = 0.1 * (1 - (z - H) / 190)
         s.box(-w / 2, -w / 2, z0r + z, w, w, 4, *(flat(s, band(z - H + 22) * k_) for k_ in (1.0, 0.9, 0.75)))
-    s.blob((0, 0, z0r + H + 152), 2.6, ramp("#8a2a20", "#c8402a", "#f07050"))
+    s.blob((0, 0, z0r + H + 152), 2.6, ramp("#4a1a16", "#6e2420", "#8a2a20"))   # lamp housing (the game lights it)
+    s.tip = z0r + H + 152
     s.outline(0.7)
     return s, (a, b)
 
@@ -2659,7 +2660,7 @@ def main():
     spr, (fa, fb) = building(330, "apartment", a=1.4, b=1.0, floors=7, wall="#c9b89a", canopy=True, roof_sign="HOTEL")
     save(spr, "buildings/hotel.png", footprint=[fa, fb])
     spr, (fa, fb) = tv_station(340)
-    save(spr, "landmarks/tv-station.png", footprint=[fa, fb])
+    save(spr, "landmarks/tv-station.png", footprint=[fa, fb], tip=[0, -spr.tip])
     save_anim([tv_ads(341, f, True) for f in range(AD_FRAMES)], "landmarks/tv-ads-side.png", footprint=[0.1, 0.1])
     save_anim([tv_ads(342, f, False) for f in range(AD_FRAMES)], "landmarks/tv-ads-front.png", footprint=[0.1, 0.1])
     spr, (fa, fb) = fastfood(320)
