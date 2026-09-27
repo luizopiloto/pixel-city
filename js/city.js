@@ -95,6 +95,7 @@
   const DOWNTOWN_ART = ['buildings/shop-7.png', 'buildings/brick-3.png', 'buildings/office-8.png'];
   const HELIPAD_ODDS = 0.2;                        // glass offices with the helipad roof (office-5)
   const TREES = ['oak', 'oak-small', 'maple', 'birch', 'olive', 'pine', 'pine-small'].map(n => `nature/trees/${n}.png`);
+  const CITY_TREES = ['oak', 'oak-small', 'maple', 'birch'].map(n => `nature/trees/${n}.png`);
   const BUSHES = ['bush', 'bush-small', 'bush-flowers', 'shrub'].map(n => `nature/bushes/${n}.png`);
   const GRASSES = ['grass-a', 'grass-a', 'grass-b', 'grass-lush', 'grass-flowers'].map(n => `art/ground/${n}`);
   // Regular 3×3 blocks, by template (relative weights).
@@ -378,6 +379,12 @@
       for (let du = 0; du < lu; du++) for (let dv = 0; dv < lv; dv++) setGround(u + du, v + dv, 'paving');
     };
     const prop = (src, u, v) => props.push([src, u, v]);
+    // A few trees in (u0, v0, lu, lv), clear of the props already there and of `keep`.
+    const trees = (u0, v0, lu, lv, count, keep = () => false) => {
+      const near = props.filter(([, pu, pv]) => pu > u0 - 0.5 && pu < u0 + lu + 0.5 && pv > v0 - 0.5 && pv < v0 + lv + 0.5);
+      scatter(u0, v0, lu, lv, count, CITY_TREES,
+        (tu, tv) => keep(tu, tv) || near.some(([, pu, pv]) => Math.hypot(pu - tu, pv - tv) < 0.45), 0.8);
+    };
     const nook = (u, v) => {                 // benches in an empty 1.5 × 1.5 cell
       prop('props/bench-ne.png', u + 0.8, v + 0.9);
       prop(pick(PLANTERS), u + 0.35, v + 0.4);
@@ -417,6 +424,7 @@
         lots.push([p[0], u, u + 3, v + 0.06, v + 0.06 + b0], [p[1], u, u + 3, v + 2.94 - b1, v + 2.94]);
         prop(pick(PLANTERS), u + 0.22, v + 0.4 + rng() * 2.2);
         if (rng() < 0.6) prop('lamp.png', u + 2.8, v + 0.18);
+        for (const su of [u, u + 2.44]) if (rng() < 0.6) trees(su, v + 1.1, 0.56, 0.8, 1);   // beside the gap
       },
       row(u, v) {
         pave(u, v);
@@ -441,6 +449,8 @@
         for (const [cu, cv] of [[0.3, 0.3], [2.7, 0.3], [0.3, 2.7], [2.7, 2.7]]) prop(pick(PLANTERS), u + cu, v + cv);
         prop('lamp-white.png', u + 2.45, v + 2.2);
         prop('props/bin.png', u + 0.62, v + 2.2);
+        const water = (tu, tv) => tu > u + 0.8 && tu < u + 2.2 && tv > v + 0.8 && tv < v + 2.2;
+        trees(u, v, 3, 3, 2 + (rng() < 0.5), water);
       },
       canal(u, v) {
         for (let du = 0; du < BLOCK; du++) setGround(u + du, v + 1, 'canal');
@@ -450,6 +460,8 @@
         prop(pick(PLANTERS), u + 0.3, v + 2.7);
         prop(pick(PLANTERS), u + 2.7, v + 2.7);
         prop('lamp.png', u + 2.8, v + 0.2);
+        trees(u, v, 3, 0.95, 1);                                     // one on each bank
+        trees(u, v + 2.05, 3, 0.95, 1);
       },
       plaza(u, v) {
         pave(u, v);
