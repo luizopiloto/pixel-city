@@ -73,14 +73,21 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
     fs.writeFileSync(dump.slice(7), JSON.stringify({ NU: city.NU, NV: city.NV, grid, lots: city.lots, cells: city.cellList }));
   }
   console.log(`seed ${usedSeed}: ${city.cells} cells, ${city.NU}×${city.NV} tiles, ${city.signals.length} lights, ` +
-    `${city.routes.length} loops, ${cars.length} cars, roads ${connected ? 'connected' : `DISCONNECTED (${seen.size}/${roads.length})`}` +
+    `${cars.length} cars, roads ${connected ? 'connected' : `DISCONNECTED (${seen.size}/${roads.length})`}` +
     `, districts ${city.districts.join('/')}, ${civic.size} civic${duplicates ? `, ${duplicates} DUPLICATE civic` : ''}` +
     `, ${city.blockedDoors ? `${city.blockedDoors} BLOCKED entrances` : 'entrances clear'}`);
 
   // Traffic: close calls between crossing cars, gridlock, step() time.
   const hero = cars[0], dt = 1 / Number(process.env.FPS || 60), close = new Set();   // FPS=20: a slow browser
   let events = 0, minCross = 9, routes = 0, wasParked = false, total = 0, worst = 0;
-  let stall = 0, worstStall = 0, stallAt = null;           // hero stopped, not parked or at a light
+  let stall = 0, worstStall = 0, stallAt = null;
+  // Cars per block by district (downtown + plaza vs suburb), sampled each second.
+  const cellType = new Map(city.cellList.map(([i, j, t]) => [i + ',' + j, t]));
+  const blockOf = (u, v) => cellType.get(Math.floor((u - 1) / 4) + ',' + Math.floor((v - 1) / 4));
+  const blocks = { city: 0, suburb: 0 };
+  for (const [, , t] of city.cellList) if (t === 'suburb') blocks.suburb++; else if (t === 'downtown' || t === 'plaza') blocks.city++;
+  const onBlocks = { city: 0, suburb: 0 };
+  let samples = 0;           // hero stopped, not parked or at a light
   for (let f = 0; f < seconds / dt; f++) {
     const t0 = performance.now();
     step(dt);
@@ -99,6 +106,13 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
           `at ${b.pos.map(n => n.toFixed(2))}, its blocker ${b.blocker ? b.blocker.id : '-'})` : '-'} as ${hero.blockKind}`;
       }
     } else stall = 0;
+    if (Math.round(f * dt * 60) % 60 === 0) {
+      samples++;
+      for (const c of cars) {
+        const t = blockOf(c.pos[0], c.pos[1]);
+        if (t === 'suburb') onBlocks.suburb++; else if (t === 'downtown' || t === 'plaza') onBlocks.city++;
+      }
+    }
     if (f % 2) continue;
     for (let i = 0; i < cars.length; i++) for (let j = i + 1; j < cars.length; j++) {
       const a = cars[i], b = cars[j];
@@ -136,7 +150,8 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
   console.log(`  ${seconds}s: close calls ${events}, closest crossing ${minCross.toFixed(2)}, ` +
     `${stopped} stopped (${stuck} stuck), avg speed ${avg.toFixed(2)}, hero routes ${routes}, ` +
     `step ${(total * dt / seconds).toFixed(3)} ms avg / ${worst.toFixed(2)} ms worst${gridlock ? ', GRIDLOCK' : ''}` +
-    `, hero's longest stall ${worstStall.toFixed(1)} s${stalled ? ` STALLED at ${stallAt}` : ''}`);
+    `, hero's longest stall ${worstStall.toFixed(1)} s${stalled ? ` STALLED at ${stallAt}` : ''}` +
+    `, cars per block: city ${(onBlocks.city / samples / blocks.city).toFixed(2)}, suburb ${blocks.suburb ? (onBlocks.suburb / samples / blocks.suburb).toFixed(2) : '-'}`);
   process.exitCode = connected && !gridlock && !stalled && !duplicates && !city.blockedDoors ? 0 : 1;
   process.exit();
 };

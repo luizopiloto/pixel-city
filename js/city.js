@@ -136,8 +136,12 @@
   ];
   const CYCLE_T = SIGNAL_CYCLE.reduce((s, p) => s + p.t, 0);
 
-  const CELLS_PER_ROUTE = 4.5;             // one traffic loop per this many cells
-  const TILES_PER_CAR = 24;  // traffic density along each loop
+  // NPCs roam: each drives an endless random walk over the road lattice.
+  // Streets are picked, and cars spawned, by the weight of the blocks beside
+  // them, so suburbs get about a third of downtown's traffic.
+  const TRAFFIC = { downtown: 1, plaza: 1, park: 0.5, suburb: 0.28 };
+  const TILES_PER_CAR = 38;  // lane tiles per car at weight 1
+  const WALK_EDGES = 24;     // blocks per stretch of an NPC's walk
   const LANE = 0.23;         // lane offset from the road center line
   const TURN = 0.36;         // fillet radius at corners
   const CRUISE = 1.3;        // tiles / s
@@ -189,20 +193,6 @@
       t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
       return ((t ^ t >>> 14) >>> 0) / 4294967296;
     };
-  }
-
-  // Every tile along a polyline of road-index corners.
-  function tilesAlong(corners) {
-    const out = [];
-    for (let k = 0; k < corners.length - 1; k++) {
-      const [a, b] = [corners[k].map(roadAt), corners[k + 1].map(roadAt)];
-      const du = Math.sign(b[0] - a[0]), dv = Math.sign(b[1] - a[1]);
-      for (let u = a[0], v = a[1]; ; u += du, v += dv) {
-        out.push([u, v]);
-        if (u === b[0] && v === b[1]) break;
-      }
-    }
-    return out;
   }
 
   /* ---------- city generation ---------- */
@@ -1132,22 +1122,9 @@
       return groundMap.get(key(u, v)) || ['grass', 0];
     }
 
-    // Traffic loops: random rectangles on the road lattice, either direction.
-    const loopOk = loop => tilesAlong([...loop, loop[0]]).every(([u, v]) => isRoad(u, v));
-    const routes = [];
-    const routeCount = Math.round(cells.size / CELLS_PER_ROUTE);
-    for (let tries = 0; routes.length < routeCount && tries < 20000; tries++) {
-      const i0 = Math.floor(rng() * IU), j0 = Math.floor(rng() * IV);
-      const i1 = Math.min(IU, i0 + 1 + Math.floor(rng() * 4));
-      const j1 = Math.min(IV, j0 + 1 + Math.floor(rng() * 4));
-      const loop = [[i0, j0], [i1, j0], [i1, j1], [i0, j1]];
-      if (loopOk(loop)) routes.push(rng() < 0.5 ? loop : loop.reverse());
-    }
-
-    const toTiles = r => r.map(([i, j]) => [roadAt(i), roadAt(j)]);
     return {
       ground, isRoad, isLand, isWater, lighthouse, parking, junction, lots, props, signals, signalAt, rng, pick,
-      routes: routes.map(toTiles), NU: nu, NV: nv, IU, IV, cells: cells.size,
+      NU: nu, NV: nv, IU, IV, cells: cells.size,
       districts: districts.map(d => d.type), blockedDoors, blocked,
       cellList: [...cells.values()].map(c => [c.i, c.j, c.type, c.sup >= 0]),
     };
@@ -1178,11 +1155,17 @@
 
   const centers = corners => corners.map(([u, v]) => [u + 0.5, v + 0.5]);
 
-  // Closed rectangle loop.
-  function loopLane(corners) {
-    const pts = centers(corners), n = pts.length, out = [];
-    const dirs = pts.map((p, i) => unit(p, pts[(i + 1) % n]));
-    for (let i = 0; i < n; i++) fillet(out, pts[i], dirs[(i - 1 + n) % n], dirs[i]);
+  // An NPC's right-hand lane through lattice nodes (as tiles), from the
+  // middle of the first block to the middle of the last, rounding each turn.
+  function walkLane(tiles) {
+    const pts = centers(tiles), n = pts.length, out = [];
+    const dirs = pts.slice(0, -1).map((p, i) => unit(p, pts[i + 1]));
+    const mid = (p, q, d) => [(p[0] + q[0]) / 2 + right(d)[0] * LANE, (p[1] + q[1]) / 2 + right(d)[1] * LANE];
+    out.push(mid(pts[0], pts[1], dirs[0]));
+    for (let i = 1; i < n - 1; i++) {
+      if (dirs[i - 1][0] !== dirs[i][0] || dirs[i - 1][1] !== dirs[i][1]) fillet(out, pts[i], dirs[i - 1], dirs[i]);
+    }
+    out.push(mid(pts[n - 2], pts[n - 1], dirs[n - 2]));
     return out;
   }
 
@@ -1495,20 +1478,58 @@
 
   /* ---------- hero routes ---------- */
 
+  // The road lattice: nodes are crossings [i, j], edges the road between
+  // two neighbors. `weight(a, b)`: TRAFFIC of the blocks beside the edge.
+  // `extend(nodes, n)` walks n more edges: never back, straight 1.5× as
+  // likely, other ways by weight.
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const nodeTile = ([i, j]) => [roadAt(i), roadAt(j)];
+  function walker(city) {
+    const edgeOk = (a, b) => {
+      if (b[0] < 0 || b[1] < 0 || b[0] > city.IU || b[1] > city.IV) return false;
+      const [u0, v0] = nodeTile(a), [u1, v1] = nodeTile(b);
+      const du = Math.sign(u1 - u0), dv = Math.sign(v1 - v0);
+      for (let u = u0, v = v0; ; u += du, v += dv) {
+        if (!city.isRoad(u, v)) return false;
+        if (u === u1 && v === v1) return true;
+      }
+    };
+    const cellType = new Map(city.cellList.map(([i, j, t]) => [i + ',' + j, t]));
+    const weight = (a, b) => {
+      const i = Math.min(a[0], b[0]), j = Math.min(a[1], b[1]);
+      const sides = a[0] === b[0] ? [[i - 1, j], [i, j]] : [[i, j - 1], [i, j]];
+      const ws = sides.map(([ci, cj]) => TRAFFIC[cellType.get(ci + ',' + cj)]).filter(w => w !== undefined);
+      return ws.length ? ws.reduce((t, w) => t + w, 0) / ws.length : TRAFFIC.park;
+    };
+    function extend(nodes, n) {
+      for (let k = 0; k < n; k++) {
+        const at = nodes[nodes.length - 1], prev = nodes[nodes.length - 2];
+        const d = [at[0] - prev[0], at[1] - prev[1]];
+        let opts = DIRS.filter(o => o[0] !== -d[0] || o[1] !== -d[1])
+          .map(o => [at[0] + o[0], at[1] + o[1]]).filter(nx => edgeOk(at, nx));
+        if (!opts.length) opts = [prev];                          // dead end: turn round
+        const w = opts.map(nx => weight(at, nx) * (nx[0] - at[0] === d[0] && nx[1] - at[1] === d[1] ? 1.5 : 1));
+        let r = city.rng() * w.reduce((t, x) => t + x, 0), pick = opts.length - 1;
+        for (let q = 0; q < opts.length; q++) if ((r -= w[q]) <= 0) { pick = q; break; }
+        nodes.push(opts[pick]);
+      }
+      return nodes;
+    }
+    // Every edge once, [a, b] with b = a + (1, 0) or (0, 1), with its weight.
+    const edges = [];
+    for (let i = 0; i <= city.IU; i++) for (let j = 0; j <= city.IV; j++) {
+      for (const [di, dj] of [[1, 0], [0, 1]]) {
+        const b = [i + di, j + dj];
+        if (edgeOk([i, j], b)) edges.push({ a: [i, j], b, w: weight([i, j], b) });
+      }
+    }
+    return { edgeOk, weight, extend, edges };
+  }
+
   // Hero routes over the road grid. `planRoute(spot)` returns { path, end }
   // from a parking spot to a new random one.
   function heroPlanner(city) {
-  const nodeTile = ([i, j]) => [roadAt(i), roadAt(j)];
-  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-  const edgeOk = (a, b) => {
-    if (b[0] < 0 || b[1] < 0 || b[0] > city.IU || b[1] > city.IV) return false;
-    const [u0, v0] = nodeTile(a), [u1, v1] = nodeTile(b);
-    const du = Math.sign(u1 - u0), dv = Math.sign(v1 - v0);
-    for (let u = u0, v = v0; ; u += du, v += dv) {
-      if (!city.isRoad(u, v)) return false;
-      if (u === u1 && v === v1) return true;
-    }
-  };
+  const { edgeOk } = walker(city);
   // A parking spot: mid-block on the edge behind → ahead, facing ahead.
   const spotOn = (behind, ahead) => {
     const d = [Math.sign(ahead[0] - behind[0]), Math.sign(ahead[1] - behind[1])];
@@ -1853,7 +1874,7 @@
       }
     }
 
-    // Cars: the hero drives planned routes; the others loop.
+    // Cars: the hero drives planned routes; the others roam.
     const { planRoute, firstSpot } = heroPlanner(city);
     let heroRoute = planRoute(firstSpot);
     const heroPath = heroRoute.path;
@@ -1864,19 +1885,38 @@
       hold: firstSpot.lead ? PARK_S + 3 : 0,
       pos: heroPath.samples[0], head: heroPath.heads[0], box: null, hero: true };
     const cars = [hero];
-    for (const path of city.routes.map(r => buildPath(loopLane(r), city.signalAt, city.ground, CAR_HALF, true, city.junction))) {
-      const count = Math.max(1, Math.round(path.total / TILES_PER_CAR));
-      for (let c = 0; c < count; c++) {
-        for (let tries = 0; tries < 20; tries++) {
-          const s = city.rng() * path.total;
-          const i = Math.floor(s / path.step);
-          const pos = path.samples[i];
-          if (cars.some(o => Math.hypot(o.pos[0] - pos[0], o.pos[1] - pos[1]) < 1.2)) continue;
-          cars.push({ id: cars.length, type: city.pick(TYPES), path, s, speed: CRUISE, roll: 0, ...bumpState(),
-            pos, head: path.heads[i], box: null });
-          break;
-        }
+    // NPCs: on edges picked by weight, each with a walk of WALK_EDGES blocks.
+    const roads = walker(city);
+    const walkPath = nodes => buildPath(walkLane(nodes.map(nodeTile)), city.signalAt, city.ground, CAR_HALF, false,
+      city.junction);
+    const totalW = roads.edges.reduce((t, e) => t + e.w, 0);
+    const npcs = Math.round(totalW * PITCH * 2 / TILES_PER_CAR);           // two lanes per edge
+    for (let c = 0, tries = 0; c < npcs && tries < npcs * 20; tries++) {
+      let r = city.rng() * totalW, e = roads.edges[0];
+      for (const x of roads.edges) if ((r -= x.w) <= 0) { e = x; break; }
+      const nodes = roads.extend(city.rng() < 0.5 ? [e.a, e.b] : [e.b, e.a], WALK_EDGES);
+      const path = walkPath(nodes);
+      const s = 0.3 + city.rng() * 1.2, i = Math.floor(s / path.step), pos = path.samples[i];
+      if (cars.some(o => Math.hypot(o.pos[0] - pos[0], o.pos[1] - pos[1]) < 1.2)) continue;
+      cars.push({ id: cars.length, type: city.pick(TYPES), path, nodes, s, speed: CRUISE, roll: 0, ...bumpState(),
+        pos, head: path.heads[i], box: null });
+      c++;
+    }
+    // Near the end of its walk an NPC gets the next stretch: its last four
+    // crossings plus WALK_EDGES more. The shared start is the same lane, so
+    // the car carries on from the matching point.
+    function extendWalk(car) {
+      const nodes = roads.extend(car.nodes.slice(-4), WALK_EDGES);
+      const path = walkPath(nodes);
+      let best = -1, bestD = Infinity;
+      for (let i = 0; i < Math.min(path.samples.length, 8 / path.step); i++) {
+        const p = path.samples[i], h = path.heads[i];
+        if (h[0] * car.head[0] + h[1] * car.head[1] < 0.9) continue;
+        const d = Math.hypot(p[0] - car.pos[0], p[1] - car.pos[1]);
+        if (d < bestD) [bestD, best] = [d, i];
       }
+      if (best < 0) return;
+      Object.assign(car, { path, nodes, s: best * path.step });
     }
     // Interpolate between path samples for smooth motion.
     const place = car => {
@@ -2155,6 +2195,7 @@
         }
         if (car.path.closed) car.s = (car.s + car.speed * dt) % car.path.total;
         else car.s = Math.min(car.s + car.speed * dt, car.path.total - car.path.step);
+        if (!car.hero && car.path.total - car.s < 3.5) extendWalk(car);
         if (car.hero && car.path.total - car.path.step - car.s < 0.02 && car.speed < 0.02) {
           car.parked += dt;
           if (car.parked >= PARK_S) {

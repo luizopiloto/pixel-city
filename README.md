@@ -6,7 +6,11 @@ random routes, followed by the camera and a GPS phone mini-map.
 Every load builds a new island city: an irregular downtown of about 256
 blocks (with merged superblocks, long blocks and town squares with
 fountains) and suburb, park and plaza districts around it, ringed by
-beaches, piers and a lighthouse. Waves roll onto the shore, boats and
+beaches, piers and a lighthouse. The hero starts in a downtown parking
+lot. Other cars roam the streets on endless random routes, lighter in the
+suburbs; every 4-way crossing touching downtown or the plaza district has
+traffic lights on a green wave, and every 4-way crossing has crosswalks.
+Waves roll onto the shore, boats and
 buoys bob, the fountains play and the lighthouse beam turns; with
 `prefers-reduced-motion` everything holds still.
 
@@ -47,12 +51,14 @@ Then open http://localhost:8080. URL switches for checking things:
 - `?debug`: log startup phase times, the seed and chunk bakes
 
 `node tools/sim.js [seconds] [seed]` runs the real `js/city.js` headless:
-it reports the city (cells, size, lights, traffic loops, cars, districts),
+it reports the city (cells, size, lights, cars, districts),
 checks that every road is connected, that no district has two of the same
 civic building and that no building's entrance is blocked, then runs the
-traffic to count close calls, stuck cars, `step()` time and the hero's
-longest stall. It exits non-zero on any failure, including gridlock or the
-hero stalling for over 30 s. Options:
+traffic to count close calls, stopped and stuck cars, `step()` time, the
+hero's longest stall and the cars per block downtown and in the suburbs.
+It exits non-zero on any failure, including gridlock (over 10% of cars
+stuck for 10 s away from a red light) or the hero stalling for over 30 s.
+Options:
 
 - `--quiet`: hide the page's own console errors
 - `--dump=map.json`: write the ground, lots and cells for inspection
