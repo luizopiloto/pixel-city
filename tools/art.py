@@ -239,6 +239,8 @@ FLOWERS = [rgb(h) for h in ("#b9a45c", "#a8676a", "#c7bba0", "#8f6f9a", "#b57a4a
 WOOD = "#4b3931"
 TRIM = "#6c3434"
 GLASS = ramp("#356667", "#416b6c", "#467a7b", "#518081")
+GLASS_BLUE = ramp("#2f4a66", "#3a5876", "#446486", "#527296")
+GLASS_GREEN = ramp("#3d5a4a", "#476656", "#517262", "#5d7e6c")
 
 
 # ---------- nature ----------
@@ -760,7 +762,7 @@ def wall_shader(s, color, length_px, height_px, floors, windows, door=None, base
             out = np.where(mortar[:, None], out * 1.18, out * (0.95 + 0.1 * g))
         elif siding == "glass":
             pane = (np.mod(along, 10) < 1.2) | (np.mod(z, floor_h / 2) < 1.2)
-            glass = np.array(GLASS)[((xs + ys) // 3 % 4)]
+            glass = np.array(glass_pal if glass_pal is not None else GLASS)[((xs + ys) // 3 % 4)]
             out = np.where(pane[:, None], out, glass * 0.95)
         if stripes is not None:
             out = np.where((np.floor(along / 5) % 2 == 0)[:, None], rgb(stripes), out)
@@ -955,11 +957,12 @@ def fan_top(s):
 
 
 def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", mart=False, helipad=True,
-             canopy=False):
+             canopy=False, glass=None, roof_sign=None):
     rng = np.random.default_rng(seed)
-    s = Sprite(300, 380, 150, 290, seed)
-    x0, y0 = -a / 2, -b / 2
     fh = 34 if kind == "brick" else FLOOR               # taller floors fit arched windows
+    # A taller canvas only when needed (the canvas size seeds the texture grain).
+    s = Sprite(300, 440, 150, 350, seed) if floors * fh > 240 else Sprite(300, 380, 150, 290, seed)
+    x0, y0 = -a / 2, -b / 2
     hgt = floors * fh + 4
     lu, lv = b * 71.6, a * 71.6
     siding = {"apartment": "plain", "brick": "brick", "office": "glass", "shop": "plain"}[kind]
@@ -971,9 +974,10 @@ def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", mar
     style = "arched" if kind == "brick" else "square"
     wv = wall_shader(s, wall, lv, hgt, floors, [] if kind == "office" else win(nwin_v), door, None, siding,
                      frame="#e0d8c8" if kind == "brick" else TRIM, glass_door=kind == "office" or mart or canopy,
-                     storefront=sign, window_style=style, floor_h=fh)
+                     storefront=sign, window_style=style, floor_h=fh, glass_pal=glass)
     wu = wall_shader(s, wall, lu, hgt, floors, [] if kind == "office" else win(nwin_u), None, None, siding,
-                     frame="#e0d8c8" if kind == "brick" else TRIM, storefront=sign, window_style=style, floor_h=fh)
+                     frame="#e0d8c8" if kind == "brick" else TRIM, storefront=sign, window_style=style, floor_h=fh,
+                     glass_pal=glass)
     s.box(x0, y0, 0, a, b, hgt, flat(s, wall), wv, wu)
     if kind == "shop":
         awning(s, x0, y0 + b, a, 22, rng.choice(["#8a4a3e", "#3f6f73", "#6a6a2c"]))
@@ -993,7 +997,14 @@ def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", mar
         for ux, uy in ((x0 + a - 0.36, y0 + 0.16), (x0 + a - 0.36, y0 + 0.46), (x0 + 0.24, y0 + b - 0.36)):
             s.box(ux, uy, hgt, 0.16, 0.16, 7, fan_top(s), flat(s, "#9791a2"), flat(s, "#716f74"))
     else:
-        flat_roof(s, x0, y0, a, b, hgt, "#6e6e6e", units=2 + (floors > 4), rng=rng)
+        flat_roof(s, x0, y0, a, b, hgt, "#6e6e6e", units=0 if roof_sign else 2 + (floors > 4), rng=rng)
+    if roof_sign:                                        # lit board on posts, facing the +v street
+        bl = a * 0.72
+        sx, sy = x0 + (a - bl) / 2, y0 + b * 0.6
+        for px in (sx + 0.1, sx + bl - 0.1):
+            s.box(px - 0.015, sy - 0.015, hgt, 0.03, 0.03, 7, flat(s, "#716f74"), flat(s, "#8e8897"), flat(s, "#5b5a5c"))
+        s.box(sx, sy - 0.03, hgt + 7, bl, 0.06, 15, flat(s, "#6e2420"),
+              sign_face(s, roof_sign, bl * HW, 15, "#8a3a32", "#f0d890", "#f2c06a"), flat(s, "#6e2420"))
     s.outline(0.7)
     return s, (a, b)
 
@@ -1137,6 +1148,9 @@ def awning(s, x0, y, length, z, color, depth=0.22):
 
 # 4×7 pixel letters for signs (legible on a slanted board).
 GLYPHS = {
+    "V": ["10001", "10001", "10001", "10001", "01010", "01010", "00100"],
+    "7": ["1111", "0001", "0010", "0010", "0100", "0100", "0100"],
+    " ": ["00"] * 7,
     "D": ["1110", "1001", "1001", "1001", "1001", "1001", "1110"],
     "I": ["111", "010", "010", "010", "010", "010", "111"],
     "N": ["10001", "11001", "11001", "10101", "10011", "10011", "10001"],
@@ -1920,6 +1934,89 @@ def gate(seed, arm=1, lift=0.0):
     return s
 
 
+# ---------- TV station ----------
+
+TOWER_ORANGE, TOWER_WHITE = rgb("#c05a30"), rgb("#ddd6c8")
+
+
+def tv_station(seed):
+    """TV station under a lattice broadcast tower (after the Tokyo Tower):
+    a studio block between the four legs, which taper up in orange and
+    white bands past two observation decks to an antenna mast."""
+    s = Sprite(360, 600, 180, 500, seed)
+    rng = np.random.default_rng(seed)
+    R0, H = 1.1, 300                                   # half-width at the ground, px to the top deck
+    half = lambda z: R0 * (1 - z / H) ** 1.6 + 0.12    # the legs curve in as they rise
+    band = lambda z: TOWER_WHITE if int(z // 34) % 2 else TOWER_ORANGE
+
+    # Studio: two floors, glass front with the station's name, dishes on top.
+    a, b, hgt = 1.3, 1.1, 2 * FLOOR + 4
+    x0, y0 = -a / 2, -b / 2
+    wv = wall_shader(s, "#d8d0c0", a * 71.6, hgt, 2, [((i + 0.2) / 6, (i + 0.8) / 6) for i in range(6)],
+                     (0.42, 0.58), None, "plain", glass_door=True)
+    wu = wall_shader(s, "#d8d0c0", b * 71.6, hgt, 2, [((i + 0.2) / 4, (i + 0.8) / 4) for i in range(4)], None,
+                     None, "plain")
+    s.box(x0, y0, 0, a, b, hgt, flat(s, "#d8d0c0"), wv, wu)
+    flat_roof(s, x0, y0, a, b, hgt, "#6e6e6e", units=0, rng=rng)
+    bl = 0.7
+    s.box(-bl / 2, y0 + b - 0.02, hgt - 22, bl, 0.05, 14, flat(s, "#2b4a6e"),
+          sign_face(s, "TV 7", bl * HW, 14, "#2f5a88", "#e8eef4", "#f2c06a"), flat(s, "#24405e"))
+    for dx, dy in ((0.35, -0.25), (-0.3, 0.15)):       # satellite dishes
+        s.box(dx - 0.02, dy - 0.02, hgt, 0.04, 0.04, 6, *(flat(s, c) for c in ("#9791a2", "#8e8897", "#716f74")))
+        s.blob((dx, dy, hgt + 9), 5, ramp("#9a9488", "#c8c2b6", "#e8e2d6"), squash=0.55, shade=0.2)
+
+    def member(p, q, color, depth_bias=0.0):
+        (x, y), (x2, y2) = s.proj(*p), s.proj(*q)
+        s.line((x, y), (x2, y2), color, (p[0] + p[1] + q[0] + q[1]) / 2 + depth_bias)
+
+    # Legs (three px thick) and the lattice between them, face by face.
+    corners = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
+    for cx, cy in corners:
+        for z in range(0, H, 2):
+            p, q = (cx * half(z), cy * half(z), z), (cx * half(z + 2), cy * half(z + 2), z + 2)
+            w = 2 if z < 150 else 1                        # legs: 5 px wide low, 3 px high up
+            for off in range(-w, w + 1):
+                (x, y), (x2, y2) = s.proj(*p), s.proj(*q)
+                s.line((x + off, y), (x2 + off, y2), band(z) * (0.78 if abs(off) == w else 1.0), p[0] + p[1] + 0.05)
+    # Arches between the legs over the studio, then bracing up to the top.
+    for k in range(4):
+        (ax, ay), (bx, by) = corners[k], corners[(k + 1) % 4]
+        pts = []
+        for t in np.linspace(0, 1, 25):
+            z = 34 + 52 * math.sin(math.pi * t)
+            h = half(z)
+            pts.append((ax * h + (bx - ax) * h * t, ay * h + (by - ay) * h * t, z))
+        for p, q in zip(pts, pts[1:]):
+            member(p, q, TOWER_ORANGE)
+            member((p[0], p[1], p[2] + 1), (q[0], q[1], q[2] + 1), TOWER_ORANGE * 0.85)
+    levels = [86, 100, 114, 128, 142, 150, 168, 184, 198, 212, 224, 232, 244, 256, 268, 280, 290, H]
+    for k in range(4):
+        (ax, ay), (bx, by) = corners[k], corners[(k + 1) % 4]
+        for z0, z1 in zip(levels, levels[1:]):
+            h0, h1 = half(z0), half(z1)
+            A0, B0 = (ax * h0, ay * h0, z0), (bx * h0, by * h0, z0)
+            A1, B1 = (ax * h1, ay * h1, z1), (bx * h1, by * h1, z1)
+            c = band((z0 + z1) / 2) * 0.9
+            member(A0, B1, c)                           # X bracing
+            member(B0, A1, c)
+            member(A1, B1, c)                           # horizontal
+    # Observation decks: a wide main deck and a small top deck, windows lit.
+    def deck(z, r, h):
+        wall = lambda length: wall_shader(s, "#c8c2b6", length, h, 1, [((i + 0.15) / 8, (i + 0.85) / 8) for i in range(8)],
+                                          None, None, "plain", glass_pal=GLASS_BLUE, floor_h=h + 20)
+        s.box(-r, -r, z, 2 * r, 2 * r, h, flat(s, "#9c9284"), wall(2 * r * 71.6), wall(2 * r * 71.6))
+        s.box(-r - 0.03, -r - 0.03, z + h, 2 * r + 0.06, 2 * r + 0.06, 3, flat(s, "#8e8680"), flat(s, "#bdb3a2"), flat(s, "#a69c8c"))
+    deck(150, half(150) + 0.08, 18)
+    deck(232, half(232) + 0.06, 10)
+    # Mast: striped, thinning, with a red light on top.
+    for z in range(H, H + 120, 4):
+        w = 0.07 * (1 - (z - H) / 150)
+        s.box(-w / 2, -w / 2, z, w, w, 4, *(flat(s, band(z - H + 17) * k_) for k_ in (1.0, 0.9, 0.75)))
+    s.blob((0, 0, H + 122), 2.2, ramp("#8a2a20", "#c8402a", "#f07050"))
+    s.outline(0.7)
+    return s, (2 * R0 + 0.3, 2 * R0 + 0.3)
+
+
 # ---------- recreation ----------
 
 REC_WOOD = ("#8a6751", "#765743", "#5f4646")
@@ -2243,10 +2340,21 @@ def main():
         ("shop", dict(a=1.4, b=0.9, floors=2, wall="#ae9282")),
         ("shop", dict(a=1.2, b=0.9, floors=1, wall="#a3a07e")),
         ("office", dict(a=1.3, b=1.1, floors=7, wall="#8e8897", helipad=False)),
+        ("office", dict(a=1.3, b=1.1, floors=9, wall="#7d8a96", helipad=False, glass=GLASS_BLUE)),
+        ("office", dict(a=1.4, b=1.0, floors=5, wall="#8e8897", helipad=False, glass=GLASS_GREEN)),
+        ("brick", dict(a=1.4, b=1.0, floors=5, wall="#8a5a44")),
+        ("brick", dict(a=1.3, b=1.0, floors=3, wall="#5f4a52")),
+        ("apartment", dict(a=1.4, b=1.0, floors=6, wall="#b8a88e")),
+        ("apartment", dict(a=1.2, b=1.0, floors=3, wall="#8a6a78")),
+        ("shop", dict(a=1.4, b=0.9, floors=3, wall="#9c8a6e")),
     ]
     for i, (kind, kw) in enumerate(bl):
         spr, (fa, fb) = building(300 + i, kind, **kw)
         save(spr, f"buildings/{kind}-{i + 1}.png", footprint=[fa, fb])
+    spr, (fa, fb) = building(330, "apartment", a=1.4, b=1.0, floors=7, wall="#c9b89a", canopy=True, roof_sign="HOTEL")
+    save(spr, "buildings/hotel.png", footprint=[fa, fb])
+    spr, (fa, fb) = tv_station(340)
+    save(spr, "landmarks/tv-station.png", footprint=[fa, fb])
     spr, (fa, fb) = fastfood(320)
     save(spr, "buildings/fastfood.png", footprint=[fa, fb])
     # Civic: one of each per district (the generator enforces "unique").
