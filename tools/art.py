@@ -935,7 +935,7 @@ def market(s, x0, y0, a, b, door, rng):
     awning_u(s, x0 + a, y0, b, 22, green, depth=0.22)
 
 
-def entrance_canopy(s, cx, y, width=0.32, depth=0.5, z=25):
+def entrance_canopy(s, cx, y, width=0.32, depth=0.34, z=25):
     """New York–style entrance: a flat fabric canopy from the door out to the
     curb on brass poles, gold-trimmed valance with a building number, a red
     carpet underneath and lamps beside the door."""

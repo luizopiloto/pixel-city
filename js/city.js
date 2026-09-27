@@ -92,7 +92,8 @@
   const HOUSES = [1, 2, 3, 4, 5, 6].map(n => `houses/house-${n}.png`);
   const PLAZA_BUILDINGS = ['buildings/shop-6.png', 'buildings/shop-7.png', 'buildings/fastfood.png',
     'buildings/apartment-1.png', 'buildings/apartment-2.png'];
-  const DOWNTOWN_ART = ['buildings/shop-7.png', 'buildings/brick-3.png', 'buildings/office-8.png'];
+  const DOWNTOWN_ART = ['buildings/shop-7.png', 'buildings/brick-3.png', 'buildings/brick-4.png', 'buildings/office-8.png'];
+  const CANOPY = 0.38;                             // brick-4's entrance canopy, out from its front
   const HELIPAD_ODDS = 0.2;                        // glass offices with the helipad roof (office-5)
   const TREES = ['oak', 'oak-small', 'maple', 'birch', 'olive', 'pine', 'pine-small'].map(n => `nature/trees/${n}.png`);
   const CITY_TREES = ['oak', 'oak-small', 'maple', 'birch'].map(n => `nature/trees/${n}.png`);
@@ -555,16 +556,29 @@
     while (plan.length < downtownFree.length) plan.push('row');
     shuffle(plan);
     downtownFree.forEach((c, k) => T[plan[k]](roadAt(c.i) + 1, roadAt(c.j) + 1));
+    const DOOR = 0.4;                               // clear strip in front of every entrance
+    const footprint = lot => {
+      if (lot[0].startsWith('art:')) return [lot[1], lot[2], lot[3], lot[4]];
+      const b = BUILDINGS[lot[0]], cu = (lot[1] + lot[2]) / 2, cv = (lot[3] + lot[4]) / 2;
+      return [cu - b.a / 2, cu + b.a / 2, cv - b.b / 2, cv + b.b / 2];
+    };
+    const coversDoor = (r, self) => lots.some(o => {  // does rect r cover another building's entrance?
+      if (o === self) return false;
+      const f = footprint(o), cu = (f[0] + f[1]) / 2, w = Math.min(f[1] - f[0], 0.9);
+      return r[0] < cu + w / 2 && r[1] > cu - w / 2 && r[2] < f[3] + DOOR && r[3] > f[3];
+    });
     for (const lot of lots) {                       // swap some bare lots for new buildings
       const onStreet = Math.abs((lot[4] - ROAD0) % PITCH) < 0.01;      // front edge on the block's +v road
       if (onStreet && BARE.includes(lot[0]) && lot[2] - lot[1] >= 1.5 && lot[4] - lot[3] >= 1.25 && rng() < 0.35) {
         let name = pick(DOWNTOWN_ART);
         if (name === 'buildings/office-8.png' && rng() < HELIPAD_ODDS) name = 'buildings/office-5.png';
-        const [a, b] = fp(name);
-        if (a <= lot[2] - lot[1] + 0.05 && b <= lot[4] - lot[3] + 0.05) {
-          // At the street edge of its lot, leaving the back row's entrances clear.
-          const cu = (lot[1] + lot[2]) / 2, front = lot[4] - 0.08;
-          lot.splice(0, 5, 'art:' + name, cu - a / 2, cu + a / 2, front - b, front);
+        const [a, b] = fp(name), out = name === 'buildings/brick-4.png' ? CANOPY : 0;
+        if (a <= lot[2] - lot[1] + 0.05 && b + out <= lot[4] - lot[3] + 0.05) {
+          // At the street edge of its lot (canopy included), leaving the back
+          // row's entrances clear.
+          const cu = (lot[1] + lot[2]) / 2, front = lot[4] - 0.08 - out;
+          const r = [cu - a / 2, cu + a / 2, front - b, front];
+          if (!coversDoor(r, lot)) lot.splice(0, 5, 'art:' + name, ...r);
         }
       }
     }
@@ -676,16 +690,10 @@
     // DOOR-deep strip in front of it, and (new sprites) any part drawn
     // outside the footprint, free of props; count buildings that
     // intrude on another's entrance (tools/sim.js fails on any).
-    const DOOR = 0.4;
     const EXTRA = {                                  // sprite ground beyond the footprint: [-u, +u, -v, +v]
-      'buildings/brick-4.png': [0, 0, 0, 0.55], 'houses/diner.png': [0, 0.18, 0, 0],
+      'buildings/brick-4.png': [0, 0, 0, CANOPY], 'houses/diner.png': [0, 0.18, 0, 0],
       'buildings/fastfood.png': [0, 0.34, 0, 0], 'buildings/apartment-2.png': [0, 0.22, 0, 0.3],
       'civic/church.png': [0.04, 0.04, 0, 0.36], 'civic/bank.png': [0, 0, 0, 0.36],
-    };
-    const footprint = lot => {
-      if (lot[0].startsWith('art:')) return [lot[1], lot[2], lot[3], lot[4]];
-      const b = BUILDINGS[lot[0]], cu = (lot[1] + lot[2]) / 2, cv = (lot[3] + lot[4]) / 2;
-      return [cu - b.a / 2, cu + b.a / 2, cv - b.b / 2, cv + b.b / 2];
     };
     const keepouts = [], doors = [];
     for (const lot of lots) {
