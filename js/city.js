@@ -849,6 +849,12 @@
       if (c.type === 'downtown') { if (c.civic) civicCell(c, u, v, 'paving'); continue; }
       if (c.type === 'suburb') {
         if (c.civic) { civicCell(c, u, v, 'grass'); continue; }
+        if (c.diner) {                               // the diner stop: paved, a few trees at the back
+          pave(u, v);
+          const back = houseRow(u, BLOCK, v + BLOCK, c.district, true);
+          if (back - v > 0.6) scatter(u, v, 3, back - v - 0.15, 2, CITY_TREES, () => false, 0.8);
+          continue;
+        }
         grassy(u, v);
         const back = houseRow(u, BLOCK, v + BLOCK, c.district, c.diner);
         if (back - v > 0.6) scatter(u, v, 3, back - v - 0.15, 2 + Math.floor(rng() * 3), [...TREES, ...BUSHES], () => false, 0.55);
