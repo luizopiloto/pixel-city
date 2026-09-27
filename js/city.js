@@ -144,6 +144,7 @@
   const ACCEL = 1.6, DECEL = 3.2;
   const GAP = 0.62;          // following distance
   const CROSS_MARGIN = 0.8;  // s of slack needed to cross ahead of another car
+  const PATIENCE = 3;        // s stopped (not at a light) before a car stops giving way to a stopped car
   const PULL = 0.8;          // hero's pull-out/pull-in length along the road
   const TYPES = ['carDefault', 'carSedan', 'carYellow'];
 
@@ -1791,7 +1792,10 @@
     // flip while both are slowing down. A car goes first if it can clear the
     // conflict CROSS_MARGIN s before the other arrives; otherwise a moving
     // car beats a stopped one (a waiting car lets the whole stream pass),
-    // then the earlier arrival goes, then the lower id.
+    // then the earlier arrival goes, then the lower id. Kept, except when the
+    // car given way to has since stopped short of the conflict: queued behind
+    // a light or another car, or too far to reach it before the other clears
+    // it. Then the other goes, instead of waiting out that queue.
     const conflicts = new Map();
     function winner(car, o, t, s, zoneC, zoneO) {
       const key = car.id < o.id ? car.id + ',' + o.id : o.id + ',' + car.id;
@@ -1806,6 +1810,10 @@
           : Math.abs(reachC - reachO) > 0.1 ? (reachC < reachO ? car : o)
           : car.id < o.id ? car : o;
         conflicts.set(key, c = { first });
+      }
+      if (c.first === o && o.speed < 0.05 && s - zoneO > 0.3) {
+        const held = o.atLight || (o.blocker && o.blocker !== car);
+        if ((held && s - zoneO > 0.8) || arriveTime(0, s - zoneO) > arriveTime(car.speed, t + zoneC) + CROSS_MARGIN) c.first = car;
       }
       c.seen = true;
       return c.first;
@@ -1859,6 +1867,8 @@
         const zoneC = merge ? halfL(car) + halfL(o) + 0.15 : halfL(car) + halfW(o) + 0.2;
         const zoneO = merge ? zoneC : halfL(o) + halfW(car) + 0.2;
         if (s < -zoneO) continue;                         // o has cleared it
+        // Patience: in a standstill the car that has waited longest goes.
+        if (car.stuck > PATIENCE && o.speed < 0.05 && !(o.stuck >= car.stuck)) continue;
         const first = winner(car, o, t, s, zoneC, zoneO);
         if (t < zoneC - 0.15) continue;                   // well inside it: clear it
         const yields = s < zoneO || first === o;          // o is in it, or goes first
@@ -1872,7 +1882,7 @@
       if (!car.hero || car.s > PULL || car.speed > 0.2) return [Infinity, null];
       const h = car.head;
       for (const o of nearby(car)) {
-        if (o === car || h[0] * o.head[0] + h[1] * o.head[1] < 0.5) continue;
+        if (o === car || h[0] * o.head[0] + h[1] * o.head[1] < 0.5 || breaksLoop(car, o, 'yield')) continue;
         const du = o.pos[0] - car.pos[0], dv = o.pos[1] - car.pos[1];
         const back = -(du * h[0] + dv * h[1]), side = Math.abs(du * h[1] - dv * h[0]);
         if (back < -halfL(car) || back > 3 || side > 0.5) continue;
@@ -1971,6 +1981,7 @@
           ? Math.min(target, car.speed + ACCEL * dt)
           : Math.max(target, car.speed - DECEL * dt);
         if (gap <= 0) car.speed = 0;
+        car.stuck = car.speed < 0.01 && !car.atLight && !(car.parked > 0) ? (car.stuck || 0) + dt : 0;
         car.roll += car.speed * dt;
         for (const b of car.bumps) b.t += dt;
         car.bumps = car.bumps.filter(b => b.t < BUMP_T);

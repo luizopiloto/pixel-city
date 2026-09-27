@@ -4,10 +4,12 @@
 //
 //   node tools/sim.js [seconds=120] [seed=random] [--quiet] [--dump=map.json]
 //
-// Exits non-zero if the roads are disconnected, traffic gridlocks, a district
-// has two of the same civic building or a building's entrance is blocked.
+// Exits non-zero if the roads are disconnected, traffic gridlocks, the hero
+// stalls (stopped HERO_STALL s, not parked or at a light), a district has two
+// of the same civic building or a building's entrance is blocked.
 // DIAG=1 lists stuck cars and what each waits on; DOORS=1 tallies blocked
-// entrances by building and blocker.
+// entrances by building and blocker. FPS=30 or 20 steps like a slow browser
+// (default 60); HERO_STALL sets the stall limit in s (default 30).
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -75,9 +77,10 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
     `, ${city.blockedDoors ? `${city.blockedDoors} BLOCKED entrances` : 'entrances clear'}`);
 
   // Traffic: close calls between crossing cars, gridlock, step() time.
-  const hero = cars[0], dt = 1 / 60, close = new Set();
+  const hero = cars[0], dt = 1 / Number(process.env.FPS || 60), close = new Set();   // FPS=20: a slow browser
   let events = 0, minCross = 9, routes = 0, wasParked = false, total = 0, worst = 0;
-  for (let f = 0; f < seconds * 60; f++) {
+  let stall = 0, worstStall = 0, stallAt = null;           // hero stopped, not parked or at a light
+  for (let f = 0; f < seconds / dt; f++) {
     const t0 = performance.now();
     step(dt);
     const ms = performance.now() - t0;
@@ -86,6 +89,15 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
     const parked = hero.parked > 0;
     if (parked && !wasParked) routes++;
     wasParked = parked;
+    if (hero.speed < 0.01 && !parked && !hero.atLight) {
+      stall += dt;
+      if (stall > worstStall) {
+        worstStall = stall;
+        const b = hero.blocker;
+        stallAt = `${hero.pos.map(n => n.toFixed(2))} s ${hero.s.toFixed(2)} waiting on ${b ? `car ${b.id} (${b.blockKind}, ` +
+          `at ${b.pos.map(n => n.toFixed(2))}, its blocker ${b.blocker ? b.blocker.id : '-'})` : '-'} as ${hero.blockKind}`;
+      }
+    } else stall = 0;
     if (f % 2) continue;
     for (let i = 0; i < cars.length; i++) for (let j = i + 1; j < cars.length; j++) {
       const a = cars[i], b = cars[j];
@@ -117,10 +129,12 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
   }
   const avg = cars.reduce((t, c) => t + c.speed, 0) / cars.length;
   const gridlock = stopped > cars.length * 0.3;
+  const HERO_STALL = Number(process.env.HERO_STALL || 30), stalled = worstStall > HERO_STALL;
   console.log(`  ${seconds}s: close calls ${events}, closest crossing ${minCross.toFixed(2)}, ` +
     `${stopped} stopped, avg speed ${avg.toFixed(2)}, hero routes ${routes}, ` +
-    `step ${(total / (seconds * 60)).toFixed(3)} ms avg / ${worst.toFixed(2)} ms worst${gridlock ? ', GRIDLOCK' : ''}`);
-  process.exitCode = connected && !gridlock && !duplicates && !city.blockedDoors ? 0 : 1;
+    `step ${(total * dt / seconds).toFixed(3)} ms avg / ${worst.toFixed(2)} ms worst${gridlock ? ', GRIDLOCK' : ''}` +
+    `, hero's longest stall ${worstStall.toFixed(1)} s${stalled ? ` STALLED at ${stallAt}` : ''}`);
+  process.exitCode = connected && !gridlock && !stalled && !duplicates && !city.blockedDoors ? 0 : 1;
   process.exit();
 };
 
