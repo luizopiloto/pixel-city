@@ -1707,7 +1707,13 @@
         const [a, b] = m.footprint || [0.1, 0.1], [w, h] = m.size;
         const item = { src, frames: m.frames, rect: [Math.round(x - ax), Math.round(y - ay), w, h],
           box: [u - a / 2, u + a / 2, v - b / 2, v + b / 2] };
+        item.draw = c => {
+          const f = item.frameOf ? item.frameOf() : Math.floor(clock * ANIM_FPS) % item.frames;
+          c.drawImage(img[src], f * w, 0, w, h, item.rect[0], item.rect[1], w, h);
+        };
         if (src.includes('parking/gate')) {            // raised as the hero comes near: open 0..1
+          const arm = src.includes('gate-l') ? 1 : -1;   // its arm reaches 0.47 along ±u from the post
+          item.box = arm > 0 ? [u - 0.05, u + 0.47, v - 0.05, v + 0.05] : [u - 0.47, u + 0.05, v - 0.05, v + 0.05];
           Object.assign(item, { pos: [u, v], open: 0 });
           item.frameOf = () => Math.round(item.open * (item.frames - 1));
           gates.push(item);
@@ -2429,8 +2435,7 @@
       // them redrawn over them, clipped, as for cars below.
       for (const a of animated) {
         if (!overlap(a.rect, inView)) continue;
-        const [x, y, w, h] = a.rect, f = a.frameOf ? a.frameOf() : Math.floor(clock * ANIM_FPS) % a.frames;
-        ctx.drawImage(img[a.src], f * w, 0, w, h, x, y, w, h);
+        a.draw(ctx);
         const front = [...hash.query(a.rect)].filter(st => drawsBefore(a, st)).sort(byOrder);
         if (!front.length) continue;
         ctx.save();
@@ -2454,8 +2459,10 @@
         Math.abs(a.pos[0] - b.pos[0]) < 1.5 && Math.abs(a.pos[1] - b.pos[1]) < 1.5);
       for (const car of paintOrder(visible, near, carBefore)) {
         const rect = drawCar(ctx, car);
-        // Redraw whatever stands in front of the car, clipped to it.
+        // Redraw whatever stands in front of the car, clipped to it: statics,
+        // then animated sprites (a gate arm the car waits behind).
         const front = [...hash.query(rect)].filter(st => drawsBefore(car, st)).sort(byOrder);
+        front.push(...animated.filter(a => overlap(a.rect, rect) && drawsBefore(car, a)));
         if (!front.length) continue;
         ctx.save();
         ctx.beginPath();
