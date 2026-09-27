@@ -8,7 +8,7 @@
  * Mount on any element with [data-pixel-city]:
  *   data-assets     asset path (default "assets/")
  *   data-seed       layout seed (default 7)
- *   data-zoom       CSS px per art px (default 2)
+ *   data-zoom       CSS px per art px (default 1)
  *   data-minimap    id of an element to hold the GPS phone (optional)
  *   data-tiltshift  "off" to disable the tilt-shift blur
  */
@@ -1496,7 +1496,7 @@
 
   async function mount(root) {
     const base = root.dataset.assets || 'assets/';
-    const zoom = Math.max(1, Number(root.dataset.zoom || 2));
+    const zoom = Math.max(1, Number(root.dataset.zoom || 1));
     const loading = showLoading(root, base, zoom);
     // Startup runs in phases with a frame between each, so the loading
     // animation keeps moving. ?debug logs how long each phase took.
@@ -1675,7 +1675,10 @@
     // The baked scene (ground + static sprites) lives in CHUNK_W × CHUNK_H
     // chunks, drawn when first needed and kept in a small LRU cache; a traffic
     // light change repaints just its rect in the chunks already drawn.
+    // The cache holds at least CHUNK_CAP chunks, and always the visible ones
+    // plus the ring around them, so prebaking a neighbor never evicts another.
     const CHUNK_W = 1024, CHUNK_H = 512, CHUNK_CAP = 24;
+    let chunkCap = CHUNK_CAP;
     const chunks = new Map();
     let chunkTick = 0;
     // A chunk that shows water bakes its ground and its sprites apart, so
@@ -1712,7 +1715,7 @@
         if (c.top) paintRegion(c.top.g, rect, false, true);
         chunks.set(key, c);
         if (debug) console.log(`pixel-city: chunk ${key} ${(performance.now() - t0).toFixed(1)} ms, ${chunks.size} cached`);
-        if (chunks.size > CHUNK_CAP) {                     // drop the least recently used
+        if (chunks.size > chunkCap) {                      // drop the least recently used
           let old = null;
           for (const o of chunks.values()) if (o !== c && (!old || o.used < old.used)) old = o;
           chunks.delete(old.i + ',' + old.j);
@@ -1738,6 +1741,7 @@
     function drawScene(g, rect) {
       chunkTick++;
       const [i0, i1, j0, j1] = chunkRange(rect);
+      chunkCap = Math.max(CHUNK_CAP, (i1 - i0 + 3) * (j1 - j0 + 3));
       const shown = [];
       for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
         const c = chunk(i, j);

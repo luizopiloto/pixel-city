@@ -17,13 +17,7 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div class="pixel-city" data-pixel-city data-assets="assets/" data-zoom="2"></div>
-  <script>
-    // Smaller pixels on narrow screens (city.js reads data-zoom once).
-    if (window.matchMedia('(max-width: 980px)').matches) {
-      document.querySelector('[data-pixel-city]').dataset.zoom = '1';
-    }
-  </script>
+  <div class="pixel-city" data-pixel-city data-assets="assets/" data-zoom="1"></div>
   <script src="js/city.js"></script>
 </body>
 </html>

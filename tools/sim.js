@@ -27,7 +27,7 @@ const el = () => ({
   clientWidth: 1600, clientHeight: 900,
 });
 const root = el();
-root.dataset = { pixelCity: '', assets: 'assets/', zoom: '2', seed };
+root.dataset = { pixelCity: '', assets: 'assets/', zoom: '1', seed };
 global.window = { devicePixelRatio: 1, matchMedia: () => ({ matches: false }) };
 global.location = { search: '' };
 global.document = { createElement: el, getElementById: () => null, querySelectorAll: () => [root], hidden: false };

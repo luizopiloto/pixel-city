@@ -16,7 +16,7 @@ buoys bob, the fountains play and the lighthouse beam turns; with
 
 ```html
 <link rel="stylesheet" href="css/style.css">
-<div class="pixel-city" data-pixel-city data-assets="assets/" data-zoom="2"></div>
+<div class="pixel-city" data-pixel-city data-assets="assets/" data-zoom="1"></div>
 <script src="js/city.js"></script>
 ```
 
@@ -24,7 +24,7 @@ The container defaults to 16:9 at full width; size it however you need.
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `data-zoom` | `2` | CSS pixels per art pixel. Read once, on load. |
+| `data-zoom` | `1` | CSS pixels per art pixel (on high-DPI screens each art pixel still covers whole device pixels). Read once, on load. |
 | `data-seed` | random | Pins the city layout. Without it, every page load builds a new city. |
 | `data-assets` | `assets/` | Path to the assets folder. |
 | `data-tiltshift` | on | `"off"` removes the tilt-shift blur. |
