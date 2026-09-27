@@ -47,18 +47,13 @@
   /* ---------- sprites ---------- */
 
   // `base`: bottom corner of the footprint in sprite px. `a`/`b`: footprint
-  // in tiles along u / v. Plated sprites include their own pavement.
+  // in tiles along u / v.
   const BUILDINGS = {
-    tower:   { src: 'building-tower.png',        base: [126, 153],   a: 1.906, b: 1.156 },
-    corner:  { src: 'building-corner.png',       base: [110.5, 147], a: 1.664, b: 1.039 },
-    house:   { src: 'building-house.png',        base: [118, 154],   a: 1.781, b: 1.062 },
-    cafe:    { src: 'building-cafe.png',         base: [118, 134],   a: 1.781, b: 1.062 },
     kiosk:   { src: 'building-modern.png',       base: [90, 114],    a: 1.344, b: 0.656 },
     cottage: { src: 'building-small.png',        base: [90, 135],    a: 1.344, b: 0.656 },
     flats:   { src: 'buildings/corner-bare.png', base: [86, 128],    a: 1.344, b: 0.656 },
     office:  { src: 'buildings/tower-bare.png',  base: [86, 128],    a: 1.344, b: 0.656 },
   };
-  const PLATED = ['tower', 'corner', 'house', 'cafe'];
   const BARE = ['kiosk', 'cottage', 'flats', 'office'];
 
   // Ground contact point of each prop, in sprite pixels.
@@ -92,6 +87,8 @@
   const PLAZA_BUILDINGS = ['buildings/shop-6.png', 'buildings/shop-7.png', 'buildings/fastfood.png',
     'buildings/apartment-1.png', 'buildings/apartment-2.png'];
   const DOWNTOWN_ART = ['buildings/shop-7.png', 'buildings/brick-3.png', 'buildings/office-5.png'];
+  // Larger buildings for a block's back row or a wide downtown lot.
+  const BIG_ART = ['buildings/apartment-1.png', 'buildings/brick-3.png', 'buildings/office-5.png'];
   const TREES = ['oak', 'oak-small', 'maple', 'birch', 'olive', 'pine', 'pine-small'].map(n => `nature/trees/${n}.png`);
   const BUSHES = ['bush', 'bush-small', 'bush-flowers', 'shrub'].map(n => `nature/bushes/${n}.png`);
   const GRASSES = ['grass-a', 'grass-a', 'grass-b', 'grass-lush', 'grass-flowers'].map(n => `art/ground/${n}`);
@@ -400,13 +397,20 @@
     }
     const signalAt = new Map(signals.map((sg, k) => [key(sg.u, sg.v), k]));
 
+    const fp = name => (art[name] && art[name].footprint) || [1, 1];
+    const artLot = (name, cu, cv, district) => {
+      const [a, b] = fp(name);
+      lots.push(['art:' + name, cu - a / 2, cu + a / 2, cv - b / 2, cv + b / 2, district]);
+    };
+
     // Block templates. (u, v) is the block's top tile; offsets are in [0, 3).
     const T = {
       twin(u, v) {
         // Back building against the block's back edge, front one on the
         // street, so the back one's entrance faces open ground.
-        const p = shuffle([...PLATED]), b0 = BUILDINGS[p[0]].b, b1 = BUILDINGS[p[1]].b;
-        lots.push([p[0], u, u + 3, v + 0.06, v + 0.06 + b0], [p[1], u, u + 3, v + 2.94 - b1, v + 2.94]);
+        const [p0, p1] = shuffle([...BIG_ART]), b0 = fp(p0)[1], b1 = fp(p1)[1];
+        artLot(p0, u + 1.5, v + 0.1 + b0 / 2);
+        artLot(p1, u + 1.5, v + 2.9 - b1 / 2);
         prop(pick(PLANTERS), u + 0.22, v + 0.4 + rng() * 2.2);
         if (rng() < 0.6) prop('lamp.png', u + 2.8, v + 0.18);
       },
@@ -420,8 +424,8 @@
       },
       mixed(u, v) {
         pave(u, v);
-        const back = pick(PLATED), b0 = BUILDINGS[back].b;
-        lots.push([back, u, u + 3, v + 0.06, v + 0.06 + b0]);
+        const back = pick(BIG_ART);
+        artLot(back, u + 1.5, v + 0.1 + fp(back)[1] / 2);
         lots.push([pick(BARE), u, u + 1.5, v + 1.5, v + 3], [pick(BARE), u + 1.5, u + 3, v + 1.5, v + 3]);
       },
       park(u, v) {
@@ -445,7 +449,7 @@
       },
       plaza(u, v) {
         pave(u, v);
-        lots.push([pick(['cafe', 'tower']), u, u + 3, v + 0.25, v + 1.75]);
+        lots.push([pick(['kiosk', 'office']), u, u + 3, v + 0.25, v + 1.75]);
         prop('props/bench-ne.png', u + 0.7, v + 2.5);
         prop('props/bench-ne.png', u + 2.1, v + 2.5);
         prop('props/bin-gray.png', u + 1.45, v + 2.75);
@@ -479,7 +483,8 @@
             prop(pick(PLANTERS), u + w / 2 - 0.3, v + 0.4);
             prop('props/bench-ne.png', u + w / 2 + 0.2, v + 0.75);
           } else {
-            lots.push([w > 2 ? pick(PLATED) : pick(BARE), u, u + w, v, v + ROW]);
+            if (w > 2) { const n = pick(BIG_ART); artLot(n, u + w / 2, v + ROW - 0.05 - fp(n)[1] / 2); }
+            else lots.push([pick(BARE), u, u + w, v, v + ROW]);
           }
           u += w;
         }
@@ -491,11 +496,6 @@
     // Art sprites (assets/art, see tools/art.py) stand at their footprint
     // center: lots as ['art:<name>', u0, u1, v0, v1, district], props as
     // ['art/<name>', u, v].
-    const fp = name => (art[name] && art[name].footprint) || [1, 1];
-    const artLot = (name, cu, cv, district) => {
-      const [a, b] = fp(name);
-      lots.push(['art:' + name, cu - a / 2, cu + a / 2, cv - b / 2, cv + b / 2, district]);
-    };
     const artProp = (name, u, v) => props.push(['art/' + name, u, v]);
     // Trees and bushes spread over an area, kept apart and off `blocked`.
     function scatter(u0, v0, lu, lv, count, names, blocked = () => false, gap = 0.45) {
@@ -653,14 +653,14 @@
     }
 
     // Entrances: every building's door is on its +v front. Keep a clear
-    // DOOR-deep strip in front of it, and (new sprites) their pad and any
-    // part drawn outside the footprint, free of props; count buildings that
+    // DOOR-deep strip in front of it, and (new sprites) any part drawn
+    // outside the footprint, free of props; count buildings that
     // intrude on another's entrance (tools/sim.js fails on any).
     const DOOR = 0.4;
     const EXTRA = {                                  // sprite ground beyond the footprint: [-u, +u, -v, +v]
-      'buildings/brick-4.png': [0, 0, 0, 0.55], 'houses/diner.png': [0.2, 0.35, 0.15, 0.7],
-      'buildings/fastfood.png': [0.14, 0.62, 0.14, 0.2], 'buildings/apartment-2.png': [0.26, 0.26, 0.26, 0.3],
-      'civic/church.png': [0.04, 0.04, 0, 0.45], 'civic/bank.png': [0, 0, 0, 0.4],
+      'buildings/brick-4.png': [0, 0, 0, 0.55], 'houses/diner.png': [0, 0.18, 0, 0],
+      'buildings/fastfood.png': [0, 0.34, 0, 0], 'buildings/apartment-2.png': [0, 0.22, 0, 0.3],
+      'civic/church.png': [0.04, 0.04, 0, 0.36], 'civic/bank.png': [0, 0, 0, 0.36],
     };
     const footprint = lot => {
       if (lot[0].startsWith('art:')) return [lot[1], lot[2], lot[3], lot[4]];
@@ -670,7 +670,7 @@
     const keepouts = [], doors = [];
     for (const lot of lots) {
       const f = footprint(lot), cu = (f[0] + f[1]) / 2, w = Math.min(f[1] - f[0], 0.9);
-      const name = lot[0].slice(4), x = EXTRA[name] || [0.14, 0.14, 0.14, 0.14];
+      const name = lot[0].slice(4), x = EXTRA[name] || [0, 0, 0, 0];
       const door = [cu - w / 2, cu + w / 2, f[3] + (x[3] > 0.2 ? x[3] : 0), f[3] + Math.max(x[3], 0) + DOOR];
       doors.push([lot, door]);
       keepouts.push(door);

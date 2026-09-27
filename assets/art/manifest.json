@@ -773,11 +773,11 @@
  },
  "houses/diner.png": {
   "size": [
-   233,
-   134
+   150,
+   102
   ],
   "anchor": [
-   126,
+   75,
    63
   ],
   "footprint": [
@@ -787,11 +787,11 @@
  },
  "buildings/apartment-1.png": {
   "size": [
-   196,
-   216
+   160,
+   204
   ],
   "anchor": [
-   98,
+   80,
    164
   ],
   "footprint": [
@@ -801,11 +801,11 @@
  },
  "buildings/apartment-2.png": {
   "size": [
-   220,
-   250
+   181,
+   235
   ],
   "anchor": [
-   110,
+   93,
    192
   ],
   "footprint": [
@@ -815,11 +815,11 @@
  },
  "buildings/brick-3.png": {
   "size": [
-   190,
-   197
+   162,
+   185
   ],
   "anchor": [
-   95,
+   81,
    147
   ],
   "footprint": [
@@ -829,11 +829,11 @@
  },
  "buildings/brick-4.png": {
   "size": [
-   207,
-   240
+   152,
+   215
   ],
   "anchor": [
-   117,
+   76,
    179
   ],
   "footprint": [
@@ -843,11 +843,11 @@
  },
  "buildings/office-5.png": {
   "size": [
-   190,
-   302
+   154,
+   290
   ],
   "anchor": [
-   95,
+   77,
    252
   ],
   "footprint": [
@@ -857,11 +857,11 @@
  },
  "buildings/shop-6.png": {
   "size": [
-   184,
-   150
+   158,
+   138
   ],
   "anchor": [
-   92,
+   84,
    101
   ],
   "footprint": [
@@ -871,11 +871,11 @@
  },
  "buildings/shop-7.png": {
   "size": [
-   170,
-   114
+   145,
+   102
   ],
   "anchor": [
-   85,
+   78,
    68
   ],
   "footprint": [
@@ -885,11 +885,11 @@
  },
  "buildings/fastfood.png": {
   "size": [
-   203,
-   127
+   160,
+   104
   ],
   "anchor": [
-   91,
+   72,
    68
   ],
   "footprint": [
@@ -899,11 +899,11 @@
  },
  "civic/school.png": {
   "size": [
-   223,
-   172
+   192,
+   157
   ],
   "anchor": [
-   115,
+   99,
    112
   ],
   "footprint": [
@@ -915,11 +915,11 @@
  },
  "civic/church.png": {
   "size": [
-   235,
-   215
+   183,
+   192
   ],
   "anchor": [
-   131,
+   94,
    147
   ],
   "footprint": [
@@ -931,11 +931,11 @@
  },
  "civic/bank.png": {
   "size": [
-   226,
-   182
+   180,
+   162
   ],
   "anchor": [
-   125,
+   93,
    116
   ],
   "footprint": [
@@ -947,11 +947,11 @@
  },
  "civic/post-office.png": {
   "size": [
-   197,
-   159
+   167,
+   143
   ],
   "anchor": [
-   102,
+   86,
    105
   ],
   "footprint": [
@@ -963,11 +963,11 @@
  },
  "civic/police.png": {
   "size": [
-   205,
-   186
+   160,
+   170
   ],
   "anchor": [
-   107,
+   80,
    130
   ],
   "footprint": [
@@ -979,11 +979,11 @@
  },
  "civic/fire-station.png": {
   "size": [
-   221,
-   225
+   180,
+   207
   ],
   "anchor": [
-   117,
+   90,
    164
   ],
   "footprint": [

@@ -212,8 +212,6 @@ FLOWERS = [rgb(h) for h in ("#b9a45c", "#a8676a", "#c7bba0", "#8f6f9a", "#b57a4a
 WOOD = "#4b3931"
 TRIM = "#6c3434"
 GLASS = ramp("#356667", "#416b6c", "#467a7b", "#518081")
-PAVE = "#666567"
-PAVE_EDGE = "#4a494b"
 
 
 # ---------- nature ----------
@@ -696,13 +694,6 @@ def wall_shader(s, color, length_px, height_px, floors, windows, door=None, base
     return shader
 
 
-def plated(s, x0, y0, sx, sy, pad=0.14):
-    """Gray pavement pad around a footprint, like the existing plated
-    buildings."""
-    s.box(x0 - pad, y0 - pad, -3, sx + 2 * pad, sy + 2 * pad, 3,
-          flat(s, PAVE, 8), flat(s, PAVE_EDGE, 5), flat(s, "#3e3d3f", 5))
-
-
 def gable(s, x0, y0, sx, sy, zw, rh, roof, gable_col, axis="u", over=0.07):
     """Gable roof over a footprint, ridge along `axis`, eaves at zw."""
     r = np.array(roof)
@@ -731,11 +722,9 @@ def gable(s, x0, y0, sx, sy, zw, rh, roof, gable_col, axis="u", over=0.07):
 
 
 def house(seed, a=1.2, b=0.9, floors=1, wall="#a47d6a", roof=None, gable_col="#4f3a30",
-          axis="u", garage=False, chimney=True, porch=True, pad=False, base="#6e5a4c", siding="boards"):
+          axis="u", garage=False, chimney=True, porch=True, base="#6e5a4c", siding="boards"):
     roof = roof or ramp("#6e4c49", "#734c48", "#835d59", "#7d5550")
     s = Sprite(260, 230, 130, 150, seed)
-    if pad:
-        plated(s, -a / 2, -b / 2, a + (0.55 if garage else 0), b)
     x0, y0 = -a / 2, -b / 2
     hgt = floors * FLOOR + 4
     lu, lv = b * math.hypot(HW, HH), a * math.hypot(HW, HH)          # face lengths, px
@@ -803,13 +792,10 @@ def fan_top(s):
     return shader
 
 
-def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", pad=True, mart=False,
+def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", mart=False,
              canopy=False):
     rng = np.random.default_rng(seed)
     s = Sprite(300, 380, 150, 290, seed)
-    if pad:
-        # A canopy entrance runs out over the sidewalk: pad extends in front.
-        plated(s, -a / 2, -b / 2, a, b + (0.42 if canopy else 0), pad=0.26 if mart else 0.14)
     x0, y0 = -a / 2, -b / 2
     fh = 34 if kind == "brick" else FLOOR               # taller floors fit arched windows
     hgt = floors * fh + 4
@@ -1039,18 +1025,11 @@ def sign_face(s, text, length_px, height_px, board, ink, bulbs):
 
 def diner(seed):
     """Roadside diner: ribbed stainless body, red stripe, window band, glass
-    vestibule, pole sign and a small parking lot."""
+    vestibule and a pole sign."""
     s = Sprite(320, 260, 160, 160, seed)
     a, b, h = 1.6, 0.75, 26
     x0, y0 = -a / 2, -b / 2
     steel, red = rgb("#a9a6b2"), rgb("#8a3a32")
-
-    # Lot: pavement with parking lines along the front.
-    def lot(a_, b_, xs, ys):
-        out = np.repeat(rgb(PAVE)[None], len(a_), 0) + (s.grain[ys, xs] - 0.5)[:, None] * 8
-        line = (b_ > 0.72) & (np.mod(a_ * 2.3 * 71.6, 16) < 1.2)
-        return np.where(line[:, None], rgb("#c9c3b4"), out)
-    s.box(x0 - 0.2, y0 - 0.15, -3, a + 0.55, b + 0.75, 3, lot, flat(s, PAVE_EDGE, 5), flat(s, "#3e3d3f", 5))
 
     def body(length_px, door=None):
         def shader(a_, b_, xs, ys):
@@ -1082,8 +1061,8 @@ def diner(seed):
     # Glass vestibule in front of the door.
     vx = x0 + a * 0.62
     s.box(vx, y0 + b, 0, 0.26, 0.16, 22, roof, body(0.26 * 71.6, door=(0.25, 0.75)), body(0.16 * 71.6))
-    # Pole sign at the lot's front corner.
-    px, py = x0 + a + 0.2, y0 + b + 0.45
+    # Pole sign beside the front corner.
+    px, py = x0 + a + 0.12, y0 + b - 0.1
     s.box(px - 0.02, py - 0.02, 0, 0.04, 0.04, 56, flat(s, "#716f74"), flat(s, "#8e8897"), flat(s, "#5b5a5c"))
     board_len = 0.5
     s.box(px - board_len / 2, py - 0.03, 56, board_len, 0.06, 17, flat(s, "#6e2420"),
@@ -1118,8 +1097,6 @@ def fastfood(seed):
     a, b, h = 1.3, 0.95, 26
     x0, y0 = -a / 2, -b / 2
     red, yellow, cream = rgb("#8a3a32"), rgb("#c9a84a"), rgb("#d0c4ac")
-    # Pad, wider on the +u side for the patio.
-    s.box(x0 - 0.14, y0 - 0.14, -3, a + 0.62, b + 0.3, 3, flat(s, PAVE, 8), flat(s, PAVE_EDGE, 5), flat(s, "#3e3d3f", 5))
 
     def wall(length_px, door=None):
         def shader(a_, b_, xs, ys):
@@ -1233,7 +1210,6 @@ def school(seed):
     a, b, fh, floors = 1.8, 1.0, 30, 2
     x0, y0 = -a / 2, -b / 2
     hgt = floors * fh + 4
-    plated(s, x0, y0, a, b + 0.12)
     civic_walls(s, x0, y0, a, b, hgt, floors, fh, "#7d4a3e", "brick", spans(6, skip=(2, 3)), spans(3),
                 (0.43, 0.57))
     cornice(s, x0, y0, a, b, hgt)
@@ -1316,7 +1292,6 @@ def church(seed):
     a, b, hgt = 1.15, 1.45, 44
     x0, y0 = -a / 2, -b / 2
     tw, th = 0.34, 100
-    plated(s, x0 - 0.04, y0, a + 0.08, b + 0.42)
     # Nave: stained glass along the side, the portal on the front wall.
     side = wall_shader(s, STONE, b * 71.6, hgt, 1, spans(4, 0.3, 0.7), None, None, "plain", frame="#8e8680",
                        window_style="arched", floor_h=46, glass_pal=STAINED)
@@ -1370,7 +1345,6 @@ def bank(seed):
     a, b, fh, floors = 1.5, 1.1, 34, 2
     x0, y0 = -a / 2, -b / 2
     hgt = floors * fh + 4
-    plated(s, x0, y0, a, b + 0.38)
     civic_walls(s, x0, y0, a, b, hgt, floors, fh, STONE, "plain", spans(5, skip=(1, 2, 3)), spans(3),
                 (0.27, 0.73), "arched", "#8e8680", None, glass_door=True)
     for dx in (0.385, 0.615):                              # two revolving doors
@@ -1394,7 +1368,6 @@ def post_office(seed):
     a, b, fh, floors = 1.4, 1.0, 30, 2
     x0, y0 = -a / 2, -b / 2
     hgt = floors * fh + 4
-    plated(s, x0, y0, a, b + 0.12)
     civic_walls(s, x0, y0, a, b, hgt, floors, fh, "#a47d6a", "brick", spans(5), spans(3), (0.43, 0.57))
     cornice(s, x0, y0, a, b, hgt)
     flat_roof(s, x0, y0, a, b, hgt + 1, "#5b5a5c", units=2)
@@ -1413,7 +1386,6 @@ def police(seed):
     a, b, fh, floors = 1.4, 1.1, 30, 2
     x0, y0 = -a / 2, -b / 2
     hgt = floors * fh + 4
-    plated(s, x0, y0, a, b + 0.14)
     civic_walls(s, x0, y0, a, b, hgt, floors, fh, "#80848c", "plain", spans(5), spans(3), (0.43, 0.57),
                 frame="#2c3548")
     # Navy band at the floor line, the sign on it.
@@ -1436,7 +1408,6 @@ def fire_station(seed):
     a, b, fh, floors = 1.6, 1.1, 32, 2
     x0, y0 = -a / 2, -b / 2
     hgt = floors * fh + 4
-    plated(s, x0, y0, a, b + 0.2)
     # Hose tower at the back corner, taller than the station.
     tw, th = 0.34, 118
     civic_walls(s, x0, y0, tw, tw, th, 3, 38, "#7d3a32", "brick", [(0.35, 0.65)], [(0.35, 0.65)],
