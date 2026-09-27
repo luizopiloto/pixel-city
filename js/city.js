@@ -583,7 +583,9 @@
         props.push(['art/parking/fence-r1.png', u0 + 0.05, v, [u0 + 0.02, u0 + 0.05, v, v + 1]]);
         props.push(['art/parking/fence-r1.png', u1 - 0.01, v, [u1 - 0.04, u1 - 0.01, v, v + 1]]);
       }
-      props.push(['art/parking/gate-l.png', eu + 0.06, v1 - 0.1], ['art/parking/gate-r.png', eu + 0.94, v1 - 0.1]);
+      // Gates half a tile in from the street, where the way out is still
+      // straight (the turn onto the street starts at the lot's edge).
+      props.push(['art/parking/gate-l.png', eu + 0.05, v1 - 0.55], ['art/parking/gate-r.png', eu + 0.95, v1 - 0.55]);
       props.push(['art/parking/sign.png', ...sign, [sign[0] - 0.25, sign[0] + 0.25, sign[1] - 0.03, sign[1] + 0.03]]);
       parking = { cars, lead, behind: [sb.bi + 1, sb.bj + sb.bh], ahead: [sb.bi, sb.bj + sb.bh] };
     }
