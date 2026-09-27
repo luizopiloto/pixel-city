@@ -638,13 +638,20 @@ def dune(sides, corners=(), seed=1):
     return tile_image(col)
 
 
-FOAM_FRAMES = 8
+FOAM_FRAMES = 16
+
+
+def smoothstep(a, b, x):
+    t = min(1.0, max(0.0, (x - a) / (b - a)))
+    return t * t * (3 - 2 * t)
 
 
 def foam(sides, corners=(), seed=1):
-    """Waves on a shore tile, FOAM_FRAMES frames side by side: a crest rolls
-    in to the sand, washes up, then drains back as thinning lace over wet
-    sand. Transparent elsewhere; drawn over the tile every frame."""
+    """Waves on a shore tile, FOAM_FRAMES frames side by side: a faint swell
+    fades in offshore and speeds up toward the sand, its crest thickening
+    into foam that breaks white as it arrives, then drains back as thinning
+    lace over wet sand. Transparent elsewhere; drawn over the tile every
+    frame."""
     h, w = TILE_MASK.shape
     d, _ = shore_field(sides, corners, seed)
     rng = np.random.default_rng(seed + 900)
@@ -659,13 +666,18 @@ def foam(sides, corners=(), seed=1):
             mask = mask & TILE_MASK
             col[mask] = c
             alpha[mask] = np.maximum(alpha[mask], a)
-        if p < 0.625:                                     # rolling in
-            front = 0.58 - 0.34 * (p / 0.625) ** 0.8
-            paint((d > front) & (d < front + 0.09), body, 0.45)
-            paint(np.abs(d - front) < 0.022, crest, 0.95)
-            paint((np.abs(d - front) < 0.012) & (lace > 0.45), white, 1.0)
+        if p < 0.7:                                       # rolling in
+            r = p / 0.7
+            front = 0.62 - 0.38 * r ** 1.4                # slow far out, quicker near the sand
+            grow = smoothstep(0.0, 0.45, r)               # the swell fades in ...
+            paint((d > front) & (d < front + 0.05 + 0.05 * grow), body, 0.45 * grow)
+            if r > 0.2:                                   # ... then its crest foams up
+                width = 0.006 + 0.017 * smoothstep(0.2, 0.8, r)
+                paint(np.abs(d - front) < width, crest, 0.95 * smoothstep(0.2, 0.5, r))
+            if r > 0.55:                                  # and breaks white near the sand
+                paint((np.abs(d - front) < 0.012) & (lace > 0.75 - 0.3 * smoothstep(0.55, 0.9, r)), white, 1.0)
         else:                                             # draining back
-            q = (p - 0.625) / 0.375
+            q = (p - 0.7) / 0.3
             back = 0.24 + 0.14 * q
             paint((d > 0.2) & (d < back), rgb("#6b5a40"), 0.5 * (1 - q))           # wet sand, drying
             paint((np.abs(d - back) < 0.02) & (lace > 0.35 + 0.4 * q), white, 0.9 * (1 - q))
@@ -680,11 +692,10 @@ def foam(sides, corners=(), seed=1):
 
 
 def glints(seed=1):
-    """Sun glints for open water, FOAM_FRAMES frames: a few specks flare and
-    fade in the first frames, the rest are empty."""
+    """Sun glints for open water, 4 frames: a few specks flare and fade."""
     h, w = TILE_MASK.shape
     rng = np.random.default_rng(seed)
-    atlas = Image.new("RGBA", (w * FOAM_FRAMES, h))
+    atlas = Image.new("RGBA", (w * 4, h))
     px = atlas.load()
     specks = [(rng.integers(20, w - 20), rng.integers(12, h - 12)) for _ in range(3)]
     for k, level in enumerate([0.5, 1.0, 0.7, 0.3]):

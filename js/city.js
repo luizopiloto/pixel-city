@@ -1466,7 +1466,7 @@
     // Moving water, drawn every frame between a chunk's ground and its
     // sprites: waves rolling onto every shore tile (their phase drifts slowly
     // along the coast, so neighbors mostly agree) and glints on open water.
-    const WAVE_S = 3.2, WAVE_FRAMES = 8;
+    const WAVE_S = 3.2;
     function drawWaves(g, rect) {
       const t = clock / WAVE_S;
       forTiles(rect, (u, v) => {
@@ -1475,7 +1475,8 @@
         let atlas, f;
         if (name.startsWith('art/ground/shore-')) {
           atlas = img['art/ground/foam-' + name.slice(17) + '.png'];
-          f = Math.floor((t + (u + v) * 0.012) * WAVE_FRAMES) % WAVE_FRAMES;
+          const frames = atlas ? atlas.width / 128 : 1;     // frames side by side in the atlas
+          f = Math.floor((t + (u + v) * 0.012) * frames) % frames;
         } else {
           const h = ((u * 73856093) ^ (v * 19349663)) >>> 0;          // each tile glints now and then
           f = Math.floor(t * 5 + (h % 97)) % 40;
