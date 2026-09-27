@@ -82,6 +82,7 @@
   // Sea around the island: empty lattice cells on the two back sides (-u,
   // -v) and the two camera-facing ones (+u, +v), where the beach is wider.
   const SEA_BACK = 2, SEA_FRONT = 4;
+  const LOOSE_BOATS = 4;     // rowboats out at sea (besides those moored at piers)
   const LONG_SHAPES = [[1, 2], [1, 2], [1, 2], [2, 1], [2, 1], [2, 1], [1, 3], [3, 1]];
   const SUBURB_SHAPES = [[1, 2], [1, 3], [2, 1], [3, 1]];
   // 2×2 squares: buildings around a recreation area (a grass town square
@@ -904,6 +905,32 @@
       const shoreline = ([u, v]) => NB4.some(([a, b]) => sea.has(key(u + a, v + b)));
       // Turned versions of a beach sprite: <name>-r1 .. -r3, 90° steps.
       const turned = (name, k) => (k ? name.replace('.png', `-r${k}.png`) : name);
+      // Which way the water is from a beach point, and which way open sea is
+      // from a sea tile: [du, dv] toward the neighbor nearest the sea / the
+      // deepest neighbor. TURN maps a direction to the turn (0-3) that points
+      // a sprite drawn toward +u that way (each turn: +u -> +v -> -u -> -v).
+      const seaward = (pu, pv) => {             // by how the sea distance slopes, over 2 tiles each way
+        const u = Math.floor(pu), v = Math.floor(pv);
+        const T = (a, b) => (sea.has(key(a, b)) ? 0 : toSea.get(key(a, b)));
+        const t0 = T(u, v) ?? 1;
+        let gu = 0, gv = 0;
+        for (let r = 1; r <= 2; r++) {
+          gu += (T(u - r, v) ?? t0 + r) - (T(u + r, v) ?? t0 + r);
+          gv += (T(u, v - r) ?? t0 + r) - (T(u, v + r) ?? t0 + r);
+        }
+        if (Math.abs(gu) > 1.25 * Math.abs(gv)) return [Math.sign(gu), 0];
+        if (Math.abs(gv) > 1.25 * Math.abs(gu)) return [0, Math.sign(gv)];
+        return rng() < 0.5 ? [Math.sign(gu) || 1, 0] : [0, Math.sign(gv) || 1];   // a diagonal coast: either
+      };
+      const offshore = (u, v) => {
+        let best = [0, 1], d = -1;
+        for (const [a, b] of NB4) {
+          const n = depth.get(key(u + a, v + b)) ?? -1;
+          if (n > d) [d, best] = [n, [a, b]];
+        }
+        return best;
+      };
+      const TURN = ([a, b]) => (a > 0 ? 0 : b > 0 ? 1 : a < 0 ? 2 : 3);
       // The lighthouse: on the front shore tile lowest on screen.
       const tip = sand.filter(t => t[2] > 0.5 && shoreline(t)).sort((a, b) => b[0] + b[1] - a[0] - a[1])[0];
       if (tip) {
@@ -965,12 +992,13 @@
         } else if (d > 1 && r < 0.1 + 0.22 * f) {            // umbrella with a lounger or a towel
           const au = u + 0.15 + rng() * 0.35, av = v + 0.15 + rng() * 0.35;
           beachProp(pick(['beach/umbrella-red.png', 'beach/umbrella-teal.png', 'beach/umbrella-gold.png']), au, av);
+          // Loungers put their feet toward the water, towels lie toward it.
           const seat = pick(['beach/lounger-teal.png', 'beach/lounger-red.png', 'beach/towel-purple.png', 'beach/towel-teal.png']);
-          beachProp(turned(seat, Math.floor(rng() * (seat.includes('towel') ? 2 : 4))),
-            au + 0.28 + rng() * 0.12, av + 0.22 + rng() * 0.12);
+          const su = au + 0.28 + rng() * 0.12, sv = av + 0.22 + rng() * 0.12, k = TURN(seaward(su, sv));
+          beachProp(turned(seat, seat.includes('towel') ? k % 2 : k), su, sv);
           take(u, v);
         } else if (d > 1 && r < 0.14 + 0.28 * f) {           // just a towel
-          beachProp(turned(pick(['beach/towel-purple.png', 'beach/towel-teal.png']), Math.floor(rng() * 2)), cu, cv);
+          beachProp(turned(pick(['beach/towel-purple.png', 'beach/towel-teal.png']), TURN(seaward(cu, cv)) % 2), cu, cv);
           take(u, v);
         }
       }
@@ -982,12 +1010,18 @@
         const chance = dune.has(key(u, v)) ? 0.7 : d === 2 ? 0.3 : d === 3 ? 0.1 : 0.03;
         for (let n = 0; n < 2 && rng() < chance; n++) beachProp(pick(DUNE_PLANTS), u + 0.15 + rng() * 0.7, v + 0.15 + rng() * 0.7);
       }
-      // Buoys marking the swimming area, and a few boats, off the front beach.
-      for (const k of sea) {
+      // Buoys marking the swimming area, and a few boats off the front
+      // beach pointing out to sea (moored ones lie along their pier).
+      let boats = 0;
+      for (const k of shuffle([...sea])) {
         const [u, v] = k.split(',').map(Number), d = depth.get(k), f = front(u, v);
         if (f < 0.5 || taken.has(k)) continue;
         if (d === 3 && rng() < 0.22) beachProp('beach/buoy.png', u + 0.5, v + 0.5);
-        else if (d >= 2 && d <= 5 && rng() < 0.006) beachProp(turned('beach/rowboat.png', Math.floor(rng() * 4)), u + 0.5, v + 0.5);
+        else if (d >= 4 && d <= 6 && boats < LOOSE_BOATS && rng() < 0.0025) {
+          beachProp(turned('beach/rowboat.png', TURN(offshore(u, v)) % 2 + 2 * (rng() < 0.5)), u + 0.5, v + 0.5);
+          take(u, v, 2);
+          boats++;
+        }
       }
     }
 
