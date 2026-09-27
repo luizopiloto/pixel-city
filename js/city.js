@@ -847,6 +847,7 @@
             sea.has(key(u + du * k + dv, v + dv * k + du)) && sea.has(key(u + du * k - dv, v + dv * k - du)))) continue;
           for (let k = 0; k < 4; k++) {
             const pu = du ? u + 0.7 + k : u + 0.31, pv = dv ? v + 0.7 + k : v + 0.31;
+            take(u + du * (k + 1), v + dv * (k + 1), 1);
             beachProp(name, pu, pv, [pu, pu + (du ? 1 : 0.38), pv, pv + (dv ? 1 : 0.38)]);
           }
           beachProp('beach/rowboat.png', u + du * 3.2 + dv * 0.9, v + dv * 3.2 + du * 0.9);
@@ -902,7 +903,7 @@
       // Buoys marking the swimming area, and a few boats, off the front beach.
       for (const k of sea) {
         const [u, v] = k.split(',').map(Number), d = depth.get(k), f = front(u, v);
-        if (f < 0.5) continue;
+        if (f < 0.5 || taken.has(k)) continue;
         if (d === 3 && rng() < 0.22) beachProp('beach/buoy.png', u + 0.5, v + 0.5);
         else if (d >= 2 && d <= 5 && rng() < 0.006) beachProp('beach/rowboat.png', u + 0.5, v + 0.5);
       }
@@ -1435,8 +1436,8 @@
     }
     let tiltFocus = -1;
 
-    // Ground tiles whose diamond overlaps a screen rect, back to front.
-    function drawGround(g, [x, y, w, h]) {
+    // Tiles whose diamond (and slab) overlaps a screen rect, back to front.
+    function forTiles([x, y, w, h], fn) {
       const uv = (px, py) => [((px - OX) / HW + (py - TOP) / HH) / 2, ((py - TOP) / HH - (px - OX) / HW) / 2];
       const pts = [uv(x, y), uv(x + w, y), uv(x, y + h), uv(x + w, y + h)];
       const u0 = Math.max(0, Math.floor(Math.min(...pts.map(p => p[0]))) - 1);
@@ -1448,13 +1449,41 @@
           const v = d - u;
           const [tx, ty] = iso(u, v);
           if (tx + HW + 1 < x || tx - HW - 1 > x + w || ty + TH + SLAB + 1 < y || ty > y + h) continue;
-          const gr = city.ground(u, v);
-          if (!gr) continue;
-          const sw = !city.isLand(u, v + 1), se = !city.isLand(u + 1, v);
-          if (sw || se) drawSlab(g, u, v, sw, se, x, x + w, city.isWater(u, v));
-          drawTile(g, img[gr[0].startsWith('art/') ? gr[0] + '.png' : `tiles/${gr[0]}.png`], u, v, gr[1]);
+          fn(u, v);
         }
       }
+    }
+    function drawGround(g, rect) {
+      forTiles(rect, (u, v) => {
+        const gr = city.ground(u, v);
+        if (!gr) return;
+        const sw = !city.isLand(u, v + 1), se = !city.isLand(u + 1, v);
+        if (sw || se) drawSlab(g, u, v, sw, se, rect[0], rect[0] + rect[2], city.isWater(u, v));
+        drawTile(g, img[gr[0].startsWith('art/') ? gr[0] + '.png' : `tiles/${gr[0]}.png`], u, v, gr[1]);
+      });
+    }
+
+    // Moving water, drawn every frame between a chunk's ground and its
+    // sprites: waves rolling onto every shore tile (their phase drifts slowly
+    // along the coast, so neighbors mostly agree) and glints on open water.
+    const WAVE_S = 3.2, WAVE_FRAMES = 8;
+    function drawWaves(g, rect) {
+      const t = clock / WAVE_S;
+      forTiles(rect, (u, v) => {
+        if (!city.isWater(u, v)) return;
+        const name = city.ground(u, v)[0], [x, y] = iso(u, v);
+        let atlas, f;
+        if (name.startsWith('art/ground/shore-')) {
+          atlas = img['art/ground/foam-' + name.slice(17) + '.png'];
+          f = Math.floor((t + (u + v) * 0.012) * WAVE_FRAMES) % WAVE_FRAMES;
+        } else {
+          const h = ((u * 73856093) ^ (v * 19349663)) >>> 0;          // each tile glints now and then
+          f = Math.floor(t * 5 + (h % 97)) % 40;
+          if (f >= 4) return;
+          atlas = img['art/ground/glints.png'];
+        }
+        if (atlas) g.drawImage(atlas, f * 128, 0, 128, atlas.height, x - HW, y, 128, atlas.height);
+      });
     }
 
     await phase('ground');
@@ -1522,29 +1551,38 @@
     const CHUNK_W = 1024, CHUNK_H = 512, CHUNK_CAP = 24;
     const chunks = new Map();
     let chunkTick = 0;
-    function paintRegion(g, rect) {
+    // A chunk that shows water bakes its ground and its sprites apart, so
+    // the waves can go between them; any other bakes both together.
+    function paintRegion(g, rect, ground = true, sprites = true) {
       g.save();
       g.beginPath();
       g.rect(...rect);
       g.clip();
       g.clearRect(...rect);
-      drawGround(g, rect);
-      [...hash.query(rect)].sort(byOrder).forEach(st => st.draw(g));
+      if (ground) drawGround(g, rect);
+      if (sprites) [...hash.query(rect)].sort(byOrder).forEach(st => st.draw(g));
       g.restore();
     }
+    const layer = (i, j) => {
+      const cv = document.createElement('canvas');
+      cv.width = CHUNK_W;
+      cv.height = CHUNK_H;
+      const g = cv.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.translate(-i * CHUNK_W, -j * CHUNK_H);
+      return { canvas: cv, g };
+    };
     function chunk(i, j) {
       const key = i + ',' + j;
       let c = chunks.get(key);
       if (!c) {
-        const cv = document.createElement('canvas');
-        cv.width = CHUNK_W;
-        cv.height = CHUNK_H;
-        const g = cv.getContext('2d');
-        g.imageSmoothingEnabled = false;
-        g.translate(-i * CHUNK_W, -j * CHUNK_H);
-        const t0 = performance.now();
-        paintRegion(g, [i * CHUNK_W, j * CHUNK_H, CHUNK_W, CHUNK_H]);
-        c = { canvas: cv, g, i, j };
+        const t0 = performance.now(), rect = [i * CHUNK_W, j * CHUNK_H, CHUNK_W, CHUNK_H];
+        let wet = false;
+        forTiles(rect, (u, v) => { wet = wet || city.isWater(u, v); });
+        c = { ...layer(i, j), i, j, wet };
+        if (wet && hash.query(rect).size) c.top = layer(i, j);
+        paintRegion(c.g, rect, true, !wet);
+        if (c.top) paintRegion(c.top.g, rect, false, true);
         chunks.set(key, c);
         if (debug) console.log(`pixel-city: chunk ${key} ${(performance.now() - t0).toFixed(1)} ms, ${chunks.size} cached`);
         if (chunks.size > CHUNK_CAP) {                     // drop the least recently used
@@ -1563,7 +1601,9 @@
       const [i0, i1, j0, j1] = chunkRange(rect);
       for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
         const c = chunks.get(i + ',' + j);
-        if (c) paintRegion(c.g, rect);
+        if (!c) continue;
+        paintRegion(c.g, rect, true, !c.wet);
+        if (c.top) paintRegion(c.top.g, rect, false, true);
       }
     }
     // Draw the visible chunks (baking any missing), then bake at most one
@@ -1571,8 +1611,15 @@
     function drawScene(g, rect) {
       chunkTick++;
       const [i0, i1, j0, j1] = chunkRange(rect);
+      const shown = [];
       for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
-        g.drawImage(chunk(i, j).canvas, i * CHUNK_W, j * CHUNK_H);
+        const c = chunk(i, j);
+        g.drawImage(c.canvas, i * CHUNK_W, j * CHUNK_H);
+        shown.push(c);
+      }
+      if (shown.some(c => c.wet)) {
+        drawWaves(g, rect);
+        for (const c of shown) if (c.top) g.drawImage(c.top.canvas, c.i * CHUNK_W, c.j * CHUNK_H);
       }
       for (let i = i0 - 1; i <= i1 + 1; i++) for (let j = j0 - 1; j <= j1 + 1; j++) {
         if (!chunks.has(i + ',' + j) && i >= 0 && j >= 0 && i * CHUNK_W < W && j * CHUNK_H < H) {

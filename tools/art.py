@@ -571,10 +571,9 @@ SAND = dict(base="#9c8660", dark="#957f5a", light="#a38c66")
 WATER = ramp("#216a78", "#227383", "#2f8191", "#3e92a2")
 
 
-def shore(sides, corners=(), seed=1):
-    """Water tile with sand on the given sides (n = -u, e = -v, s = +u,
-    w = +v, as in the road keys) and outer corners ('ne', 'es', 'sw', 'wn':
-    land only diagonally)."""
+def shore_field(sides, corners, seed):
+    """Distance from the sand, in tiles, for each pixel of a shore tile
+    (shared by the tile and its foam frames), and the tile's rng."""
     h, w = TILE_MASK.shape
     rng = np.random.default_rng(seed)
     u, v = uv_of_tile()
@@ -587,7 +586,15 @@ def shore(sides, corners=(), seed=1):
     for k in corners:
         cu, cv = corner[k]
         d = np.minimum(d, np.hypot(u - cu, v - cv) - 0.02)
-    d = d + wobble
+    return d + wobble, rng
+
+
+def shore(sides, corners=(), seed=1):
+    """Water tile with sand on the given sides (n = -u, e = -v, s = +u,
+    w = +v, as in the road keys) and outer corners ('ne', 'es', 'sw', 'wn':
+    land only diagonally)."""
+    h, w = TILE_MASK.shape
+    d, rng = shore_field(sides, corners, seed)
     n = value_noise(h, w, 5, rng)
     water = np.array(WATER)[np.clip((n * 2.2).astype(int), 0, 1)]
     col = water.copy()
@@ -629,6 +636,65 @@ def dune(sides, corners=(), seed=1):
             col[y - 1, x] = rgb(GRASS["light"]) * 1.2
             col[y, x + 1] = rgb(GRASS["dark"])
     return tile_image(col)
+
+
+FOAM_FRAMES = 8
+
+
+def foam(sides, corners=(), seed=1):
+    """Waves on a shore tile, FOAM_FRAMES frames side by side: a crest rolls
+    in to the sand, washes up, then drains back as thinning lace over wet
+    sand. Transparent elsewhere; drawn over the tile every frame."""
+    h, w = TILE_MASK.shape
+    d, _ = shore_field(sides, corners, seed)
+    rng = np.random.default_rng(seed + 900)
+    lace = value_noise(h, w, 3, rng)
+    white, crest, body = rgb("#d6e8e2"), rgb("#b4d4d0"), rgb("#4aa3b3")
+    frames = []
+    for k in range(FOAM_FRAMES):
+        p = k / FOAM_FRAMES
+        col, alpha = np.zeros((h, w, 3)), np.zeros((h, w))
+
+        def paint(mask, c, a):
+            mask = mask & TILE_MASK
+            col[mask] = c
+            alpha[mask] = np.maximum(alpha[mask], a)
+        if p < 0.625:                                     # rolling in
+            front = 0.58 - 0.34 * (p / 0.625) ** 0.8
+            paint((d > front) & (d < front + 0.09), body, 0.45)
+            paint(np.abs(d - front) < 0.022, crest, 0.95)
+            paint((np.abs(d - front) < 0.012) & (lace > 0.45), white, 1.0)
+        else:                                             # draining back
+            q = (p - 0.625) / 0.375
+            back = 0.24 + 0.14 * q
+            paint((d > 0.2) & (d < back), rgb("#6b5a40"), 0.5 * (1 - q))           # wet sand, drying
+            paint((np.abs(d - back) < 0.02) & (lace > 0.35 + 0.4 * q), white, 0.9 * (1 - q))
+        out = np.zeros((h, w, 4), np.uint8)
+        out[..., :3] = np.clip(col, 0, 255).astype(np.uint8)
+        out[..., 3] = (alpha * 255).astype(np.uint8)
+        frames.append(Image.fromarray(out, "RGBA"))
+    atlas = Image.new("RGBA", (w * FOAM_FRAMES, h))
+    for k, f in enumerate(frames):
+        atlas.paste(f, (k * w, 0))
+    return atlas
+
+
+def glints(seed=1):
+    """Sun glints for open water, FOAM_FRAMES frames: a few specks flare and
+    fade in the first frames, the rest are empty."""
+    h, w = TILE_MASK.shape
+    rng = np.random.default_rng(seed)
+    atlas = Image.new("RGBA", (w * FOAM_FRAMES, h))
+    px = atlas.load()
+    specks = [(rng.integers(20, w - 20), rng.integers(12, h - 12)) for _ in range(3)]
+    for k, level in enumerate([0.5, 1.0, 0.7, 0.3]):
+        for x, y in specks:
+            a = int(255 * level)
+            for dx, dy, f in ((0, 0, 1.0), (-1, 0, 0.6), (1, 0, 0.6), (0, -1, 0.4), (0, 1, 0.4)):
+                if level < 0.6 and f < 1:
+                    continue
+                px[k * w + x + dx, y + dy] = (230, 245, 240, int(a * f))
+    return atlas
 
 
 # ---------- buildings ----------
@@ -1792,8 +1858,10 @@ def main():
                 continue
             name = sides + ("-" + "".join(corners) if corners else "")
             save_tile(shore(sides, corners, seed=70 + mask), f"ground/shore-{name}.png")
+            save_tile(foam(sides, corners, seed=70 + mask), f"ground/foam-{name}.png")
     save_tile(shore("", seed=68), "ground/water-a.png")
     save_tile(shore("", seed=69), "ground/water-b.png")
+    save_tile(glints(90), "ground/glints.png")
     # Grass-to-sand transition: the same 47 combinations as the shoreline.
     for mask in range(16):
         sides = "".join(k for i, k in enumerate("nesw") if mask >> i & 1)

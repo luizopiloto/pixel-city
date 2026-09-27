@@ -232,9 +232,23 @@
   ],
   "tile": true
  },
+ "ground/foam--ne.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore--es.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam--es.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -246,9 +260,23 @@
   ],
   "tile": true
  },
+ "ground/foam--nees.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore--sw.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam--sw.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -260,9 +288,23 @@
   ],
   "tile": true
  },
+ "ground/foam--nesw.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore--essw.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam--essw.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -274,9 +316,23 @@
   ],
   "tile": true
  },
+ "ground/foam--neessw.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore--wn.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam--wn.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -288,9 +344,23 @@
   ],
   "tile": true
  },
+ "ground/foam--newn.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore--eswn.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam--eswn.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -302,9 +372,23 @@
   ],
   "tile": true
  },
+ "ground/foam--neeswn.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore--swwn.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam--swwn.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -316,9 +400,23 @@
   ],
   "tile": true
  },
+ "ground/foam--neswwn.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore--esswwn.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam--esswwn.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -330,9 +428,23 @@
   ],
   "tile": true
  },
+ "ground/foam--neesswwn.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-n.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-n.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -344,9 +456,23 @@
   ],
   "tile": true
  },
+ "ground/foam-n-es.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-n-sw.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-n-sw.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -358,9 +484,23 @@
   ],
   "tile": true
  },
+ "ground/foam-n-essw.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-e.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-e.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -372,9 +512,23 @@
   ],
   "tile": true
  },
+ "ground/foam-e-sw.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-e-wn.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-e-wn.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -386,9 +540,23 @@
   ],
   "tile": true
  },
+ "ground/foam-e-swwn.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-ne.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-ne.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -400,9 +568,23 @@
   ],
   "tile": true
  },
+ "ground/foam-ne-sw.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-s.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-s.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -414,9 +596,23 @@
   ],
   "tile": true
  },
+ "ground/foam-s-ne.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-s-wn.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-s-wn.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -428,9 +624,23 @@
   ],
   "tile": true
  },
+ "ground/foam-s-newn.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-ns.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-ns.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -442,9 +652,23 @@
   ],
   "tile": true
  },
+ "ground/foam-es.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-es-wn.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-es-wn.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -456,9 +680,23 @@
   ],
   "tile": true
  },
+ "ground/foam-nes.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-w.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-w.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -470,9 +708,23 @@
   ],
   "tile": true
  },
+ "ground/foam-w-ne.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-w-es.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-w-es.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -484,9 +736,23 @@
   ],
   "tile": true
  },
+ "ground/foam-w-nees.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-nw.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-nw.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -498,9 +764,23 @@
   ],
   "tile": true
  },
+ "ground/foam-nw-es.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-ew.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-ew.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -512,9 +792,23 @@
   ],
   "tile": true
  },
+ "ground/foam-new.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-sw.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-sw.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -526,9 +820,23 @@
   ],
   "tile": true
  },
+ "ground/foam-sw-ne.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-nsw.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-nsw.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -540,9 +848,23 @@
   ],
   "tile": true
  },
+ "ground/foam-esw.png": {
+  "size": [
+   1024,
+   65
+  ],
+  "tile": true
+ },
  "ground/shore-nesw.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/foam-nesw.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
@@ -557,6 +879,13 @@
  "ground/water-b.png": {
   "size": [
    128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/glints.png": {
+  "size": [
+   1024,
    65
   ],
   "tile": true
