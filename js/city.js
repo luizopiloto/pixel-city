@@ -2726,8 +2726,11 @@
         const rect = drawCar(ctx, car);
         // Redraw whatever stands in front of the car, clipped to it: statics,
         // then animated sprites (a gate arm the car waits behind).
+        // Diagonal neighbours (each behind the other along one axis) only
+        // overlap where the car's sprite overhangs its footprint, in front of
+        // the face it crosses, so they aren't redrawn over it.
         const front = [...hash.query(rect), ...animated.filter(a => overlap(a.rect, rect))]
-          .filter(st => drawsBefore(car, st)).sort(byOrder);
+          .filter(st => drawsBefore(car, st) && !behind(st, car)).sort(byOrder);
         if (!front.length) continue;
         ctx.save();
         ctx.beginPath();
