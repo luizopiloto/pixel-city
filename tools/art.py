@@ -745,7 +745,7 @@ def house(seed, a=1.2, b=0.9, floors=1, wall="#a47d6a", roof=None, gable_col="#4
           axis="u", garage=False, chimney=True, porch=True, base="#6e5a4c", siding="boards"):
     roof = roof or ramp("#6e4c49", "#734c48", "#835d59", "#7d5550")
     s = Sprite(260, 230, 130, 150, seed)
-    x0, y0 = -a / 2, -b / 2
+    x0, y0 = -(a + (0.5 if garage else 0)) / 2, -b / 2        # origin at the footprint center, garage included
     hgt = floors * FLOOR + 4
     lu, lv = b * math.hypot(HW, HH), a * math.hypot(HW, HH)          # face lengths, px
     win_u = [(0.18, 0.36), (0.62, 0.8)] if b > 0.7 else [(0.38, 0.62)]
