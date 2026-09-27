@@ -3,6 +3,13 @@
 An isometric pixel-art city with animated traffic and a hero car driving
 random routes, followed by the camera and a GPS phone mini-map.
 
+Every load builds a new island city: an irregular downtown of about 256
+blocks (with merged superblocks, long blocks and town squares with
+fountains) and suburb, park and plaza districts around it, ringed by
+beaches, piers and a lighthouse. Waves roll onto the shore, boats and
+buoys bob, the fountains play and the lighthouse beam turns; with
+`prefers-reduced-motion` everything holds still.
+
 **Live demo:** https://luizopiloto.github.io/pixel-city/
 
 ## Embed
@@ -43,16 +50,39 @@ Then open http://localhost:8080. URL switches for checking things:
 it reports the city (cells, size, lights, traffic loops, cars, districts),
 checks that every road is connected, that no district has two of the same
 civic building and that no building's entrance is blocked, then runs the
-traffic to count close calls, stuck cars and `step()` time.
+traffic to count close calls, stuck cars, `step()` time and the hero's
+longest stall. It exits non-zero on any failure, including gridlock or the
+hero stalling for over 30 s. Options:
+
+- `--quiet`: hide the page's own console errors
+- `--dump=map.json`: write the ground, lots and cells for inspection
+- `FPS=30` or `FPS=20`: step like a slower browser (default 60)
+- `HERO_STALL=10`: a stricter stall limit in seconds
+- `DIAG=1`: list the stuck cars and what each waits on
+- `DOORS=1`: tally blocked entrances by building
 
 ## Assets
 
-`tools/bake.py` builds the sprites the page uses (tiles, props, buildings,
-vehicle atlases and wheel animations) from the source images in `assets/`.
-Re-run it after changing a source image:
+Two scripts write the sprites the page loads; re-run the one you changed.
+
+`tools/bake.py` cuts tiles, props, buildings, vehicle atlases and wheel
+animations from the source images in `assets/`:
 
 ```bash
 python3 tools/bake.py
+```
+
+`tools/art.py` draws the rest in the city's projection and palette
+(Python with NumPy and Pillow): ground, shoreline, dune and foam tiles,
+trees and plants, houses, city and civic buildings, beach props, the
+lighthouse and the playground, BBQ and fountain pieces. They go in
+`assets/art/` with a `manifest.json` giving each sprite's size, ground
+anchor and footprint. Sprites with a `frames` count are animations with
+their frames side by side, drawn every frame instead of baked, and
+`<name>-r1` to `-r3` are the same prop turned by 90° steps.
+
+```bash
+rm -rf assets/art && python3 tools/art.py
 ```
 
 ## License
