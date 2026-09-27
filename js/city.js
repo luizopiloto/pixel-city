@@ -110,6 +110,8 @@
   const CRUISE = 1.3;        // tiles / s
   const ACCEL = 1.6, DECEL = 3.2;
   const GAP = 0.62;          // following distance
+  const CROSS_MARGIN = 0.8;  // s of slack needed to cross ahead of another car
+  const PULL = 0.8;          // hero's pull-out/pull-in length along the road
   const TYPES = ['carDefault', 'carSedan', 'carYellow'];
 
   // Sprite 0000 faces the camera; frames step 30° counter-clockwise.
@@ -117,6 +119,7 @@
   const CAR_CELL = [53, 40];
   // Half a car length in tiles: how far the stop line is from the car's center.
   const CAR_HALF = 0.24, HERO_HALF = 0.38;
+  const CAR_HALF_W = 0.12, HERO_HALF_W = 0.15;   // half widths, in tiles
   const CAR_PIVOT = [26, 32];
   // HD atlases (iso@2x.png): same size on canvas, more detail. Used when the
   // view scale is a multiple of HD so pixels stay sharp.
@@ -411,7 +414,7 @@
       return [p[0] + d[0] * along + r[0] * side, p[1] + d[1] * along + r[1] * side];
     };
     const ease = t => t * t * (3 - 2 * t);
-    const PULL = 0.8, K = 8;
+    const K = 8;
     for (let k = 0; k <= K; k++) out.push(at(pts[0], dirs[0], CURB + (LANE - CURB) * ease(k / K), PULL * k / K));
     for (let i = 1; i < n - 1; i++) fillet(out, pts[i], dirs[i - 1], dirs[i]);
     const dl = dirs[n - 2];
@@ -571,14 +574,23 @@
   const drawsBefore = (a, b) => behind(a, b) || (!behind(b, a) && depth(a) <= depth(b));
   const byOrder = (a, b) => a.order - b.order;
 
-  // Topological sort over screen-overlapping pairs only.
-  function sortStatics(items, hash) {
+  // Two cars whose footprints overlap: order them along the axis where they
+  // overlap least (side by side → across the road, nose to tail → along it).
+  function carBefore(a, b) {
+    const ou = Math.min(a.box[1], b.box[1]) - Math.max(a.box[0], b.box[0]);
+    const ov = Math.min(a.box[3], b.box[3]) - Math.max(a.box[2], b.box[2]);
+    if (ou <= 0 || ov <= 0) return drawsBefore(a, b);
+    return ou < ov ? a.pos[0] < b.pos[0] : a.pos[1] < b.pos[1];
+  }
+
+  // Topological sort over neighboring pairs only; returns the drawing order.
+  function paintOrder(items, neighbors, before) {
     const after = items.map(() => []), deg = new Array(items.length).fill(0);
     items.forEach((a, i) => { a.index = i; });
     for (const a of items) {
-      for (const b of hash.query(a.rect)) {
-        if (b.index <= a.index) continue;
-        const [f, s] = drawsBefore(a, b) ? [a, b] : [b, a];
+      for (const b of neighbors(a)) {
+        if (b.index <= a.index || items[b.index] !== b) continue;
+        const [f, s] = before(a, b) ? [a, b] : [b, a];
         after[f.index].push(s.index);
         deg[s.index]++;
       }
@@ -598,7 +610,7 @@
       const seen = new Set(order);
       order.push(...items.filter(it => !seen.has(it)).sort((a, b) => depth(a) - depth(b)));
     }
-    order.forEach((it, i) => { it.order = i; });
+    return order;
   }
 
   /* ---------- mount ---------- */
@@ -773,7 +785,7 @@
 
     const hash = new ScreenHash(128);
     statics.forEach(s => hash.add(s));
-    sortStatics(statics, hash);
+    paintOrder(statics, a => hash.query(a.rect), drawsBefore).forEach((it, i) => { it.order = i; });
 
     // Ground and static sprites, baked once; a region is re-baked when a
     // traffic light changes.
@@ -801,7 +813,7 @@
 
     const bumpState = () => ({ bumps: [], nextBump: Math.random() * BUMP_EVERY[1] });
     const hero = { id: 0, type: HERO_TYPE, path: heroPath, s: 0, speed: 0, roll: 0, ...bumpState(), parked: 0,
-      pos: heroPath.samples[0], head: heroPath.heads[0], wait: 0, box: null, hero: true };
+      pos: heroPath.samples[0], head: heroPath.heads[0], box: null, hero: true };
     const cars = [hero];
     for (const path of city.routes.map(r => buildPath(loopLane(r), city.signalAt, city.ground))) {
       const count = Math.max(1, Math.round(path.total / TILES_PER_CAR));
@@ -812,7 +824,7 @@
           const pos = path.samples[i];
           if (cars.some(o => Math.hypot(o.pos[0] - pos[0], o.pos[1] - pos[1]) < 1.2)) continue;
           cars.push({ id: cars.length, type: city.pick(TYPES), path, s, speed: CRUISE, roll: 0, ...bumpState(),
-            pos, head: path.heads[i], wait: 0, box: null });
+            pos, head: path.heads[i], box: null });
           break;
         }
       }
@@ -827,31 +839,155 @@
       car.head = p.heads[i];
     };
 
-    // Distance to `o` if it sits in `car`'s lane just ahead, else -1.
+    // Distance to `o` if it sits on `car`'s path within 1.5 tiles, else -1.
     const aheadOf = (car, o) => {
       const du = o.pos[0] - car.pos[0], dv = o.pos[1] - car.pos[1];
-      if (Math.abs(du) > 1.5 || Math.abs(dv) > 1.5) return -1;
-      const ahead = du * car.head[0] + dv * car.head[1];
-      const side = Math.abs(du * car.head[1] - dv * car.head[0]);
-      return ahead > 0 && side <= 0.22 ? ahead : -1;
+      if (Math.abs(du) > 1.6 || Math.abs(dv) > 1.6) return -1;
+      if (du * car.head[0] + dv * car.head[1] <= 0) return -1;
+      for (let d = 0.1; d <= 1.5; d += 0.1) {
+        const p = pointAhead(car, d);
+        if (Math.hypot(p[0] - o.pos[0], p[1] - o.pos[1]) <= 0.22) return d;
+      }
+      return -1;
     };
+
+    // True if the cars `car` would wait on (starting with `first`) lead back
+    // to it, and `car` is the one to go so the loop can't deadlock: the
+    // lowest id among the cars that are only yielding right of way (`kind`
+    // 'yield'), never one held by a car physically in its path ('body'),
+    // unless every car in the loop is.
+    function breaksLoop(car, first, kind) {
+      const loop = [[car, kind]];
+      for (let c = first, i = 0; c && i < 8; c = c.blocker, i++) {
+        if (c === car) {
+          const yielding = loop.filter(([, k]) => k === 'yield');
+          const pool = yielding.length ? yielding : loop;
+          return pool.some(([c2]) => c2 === car) && car.id === Math.min(...pool.map(([c2]) => c2.id));
+        }
+        loop.push([c, c.blockKind]);
+      }
+      return false;
+    }
+
+    const halfL = c => c.hero ? HERO_HALF : CAR_HALF;
+    const halfW = c => c.hero ? HERO_HALF_W : CAR_HALF_W;
+
+    // Seconds to cover `d` tiles from speed `v`, accelerating up to CRUISE.
+    function arriveTime(v, d) {
+      if (d <= 0) return 0;
+      const dAcc = (CRUISE * CRUISE - v * v) / (2 * ACCEL);
+      if (d <= dAcc) return (Math.sqrt(v * v + 2 * ACCEL * d) - v) / ACCEL;
+      return (CRUISE - v) / ACCEL + (d - dAcc) / CRUISE;
+    }
+
+    // Sample index / point / heading on the car's path `d` tiles ahead.
+    function indexAhead(car, d) {
+      const p = car.path, n = p.samples.length;
+      const i = Math.floor((car.s + d) / p.step);
+      return p.closed ? ((i % n) + n) % n : Math.max(0, Math.min(n - 1, i));
+    }
+    const pointAhead = (car, d) => car.path.samples[indexAhead(car, d)];
+    const headAhead = (car, d) => car.path.heads[indexAhead(car, d)];
+
+    // Who goes first at each conflict between two cars' paths, decided once
+    // when the conflict appears and kept until it's gone, so priority can't
+    // flip while both are slowing down. A car goes first if it can clear the
+    // conflict CROSS_MARGIN s before the other arrives; otherwise a moving
+    // car beats a stopped one (a waiting car lets the whole stream pass),
+    // then the earlier arrival goes, then the lower id.
+    const conflicts = new Map();
+    function winner(car, o, t, s, zoneC, zoneO) {
+      const key = car.id < o.id ? car.id + ',' + o.id : o.id + ',' + car.id;
+      let c = conflicts.get(key);
+      if (!c) {
+        const reachC = arriveTime(car.speed, t - zoneC), clearC = arriveTime(car.speed, t + zoneC);
+        const reachO = arriveTime(o.speed, s - zoneO), clearO = arriveTime(o.speed, s + zoneO);
+        const slowC = car.speed < 0.5 * CRUISE, slowO = o.speed < 0.5 * CRUISE;
+        const first = clearC + CROSS_MARGIN < reachO ? car
+          : clearO + CROSS_MARGIN < reachC ? o
+          : slowC !== slowO ? (slowC ? o : car)
+          : Math.abs(reachC - reachO) > 0.1 ? (reachC < reachO ? car : o)
+          : car.id < o.id ? car : o;
+        conflicts.set(key, c = { first });
+      }
+      c.seen = true;
+      return c.first;
+    }
+
+    // [distance the car may still drive before yielding to crossing or
+    // merging traffic (Infinity if it needn't), the car it yields to].
+    function crossGap(car) {
+      let gap = Infinity, who = null;
+      const mine = [];
+      for (let t = 0.1; t <= 1.6; t += 0.1) mine.push([t, pointAhead(car, t)]);
+      for (const o of cars) {
+        if (o === car || o.parked > 0 || o.atLight) continue;
+        if (Math.abs(o.pos[0] - car.pos[0]) > 3.5 || Math.abs(o.pos[1] - car.pos[1]) > 3.5) continue;
+        // Conflict point: the first point on the car's path that o's path
+        // comes within 0.3 of, t ahead of the car and s ahead of o (negative:
+        // o is already over it).
+        let t = 0, s = 0, best = 0.3;
+        const theirs = [];
+        for (let so = -0.6; so <= 3; so += 0.1) theirs.push([so, pointAhead(o, so)]);
+        for (const [tc, p] of mine) {
+          for (const [so, q] of theirs) {
+            const d = Math.hypot(p[0] - q[0], p[1] - q[1]);
+            if (d < best) [best, t, s] = [d, tc, so];
+          }
+          if (t) break;
+        }
+        if (!t) continue;
+        const h = headAhead(car, t), g = headAhead(o, s);
+        const dot = (a, b) => a[0] * b[0] + a[1] * b[1];
+        // Paths that end up in the same lane: a merge unless the cars are
+        // already in it (then it's plain following, handled by aheadOf).
+        const merge = Math.abs(dot(h, g)) >= 0.7;
+        if (merge && dot(car.head, o.head) >= 0.7) continue;
+        const zoneC = merge ? halfL(car) + halfL(o) + 0.15 : halfL(car) + halfW(o) + 0.2;
+        const zoneO = merge ? zoneC : halfL(o) + halfW(car) + 0.2;
+        if (s < -zoneO) continue;                         // o has cleared it
+        const first = winner(car, o, t, s, zoneC, zoneO);
+        if (t < zoneC - 0.15) continue;                   // well inside it: clear it
+        const yields = s < zoneO || first === o;          // o is in it, or goes first
+        if (yields && t - zoneC < gap && !breaksLoop(car, o, 'yield')) [gap, who] = [t - zoneC, o];
+      }
+      return [gap, who];
+    }
+
+    // The hero pulling out from the curb waits for the lane behind to clear.
+    function mergeGap(car) {
+      if (!car.hero || car.s > PULL || car.speed > 0.2) return Infinity;
+      const h = car.head;
+      for (const o of cars) {
+        if (o === car || h[0] * o.head[0] + h[1] * o.head[1] < 0.5) continue;
+        const du = o.pos[0] - car.pos[0], dv = o.pos[1] - car.pos[1];
+        const back = -(du * h[0] + dv * h[1]), side = Math.abs(du * h[1] - dv * h[0]);
+        if (back < -halfL(car) || back > 3 || side > 0.5) continue;
+        const tO = arriveTime(o.speed, back - GAP);
+        if (tO < arriveTime(0, PULL - car.s) + CROSS_MARGIN) return 0;
+      }
+      return Infinity;
+    }
 
     function step(dt) {
       clock += dt;
+      for (const c of conflicts.values()) c.seen = false;
       for (const car of cars) {
-        let gap = Infinity, atLight = false;
+        let gap = Infinity, atLight = false, blocker = null;
         for (const o of cars) {
           if (o === car || o.parked > 0) continue;     // the parked hero is at the curb
           const ahead = aheadOf(car, o);
-          if (ahead < 0) continue;
-          const crossing = Math.abs(car.head[0] * o.head[0] + car.head[1] * o.head[1]) < 0.5;
-          if (crossing) {
-            // Break standoffs: the lower id goes, and nobody waits forever.
-            if (car.id < o.id && aheadOf(o, car) >= 0) continue;
-            if (car.wait > 3) continue;
-          }
-          gap = Math.min(gap, ahead - GAP);
+          if (ahead < 0 || ahead - GAP >= gap || breaksLoop(car, o, 'body')) continue;
+          gap = ahead - GAP;
+          blocker = o;
         }
+        const [cross, yieldTo] = crossGap(car);
+        car.yielding = cross < Infinity;
+        let kind = 'body';
+        if (cross < gap) [gap, blocker, kind] = [cross, yieldTo, 'yield'];
+        car.blocker = gap < 0.05 ? blocker : null;
+        car.blockKind = kind;
+        gap = Math.min(gap, mergeGap(car));
         for (const st of car.path.stops) {
           const state = light(st.sig, st.axis);
           if (state === 'green') continue;
@@ -861,13 +997,13 @@
           if (state === 'amber' && d < 0.25) continue;     // too close to stop
           if (d < gap) { gap = d; atLight = true; }
         }
+        car.atLight = atLight;
         if (!car.path.closed) gap = Math.min(gap, car.path.total - car.path.step - car.s);
         const target = Math.min(CRUISE, Math.sqrt(2 * DECEL * Math.max(0, gap)));
         car.speed = target > car.speed
           ? Math.min(target, car.speed + ACCEL * dt)
           : Math.max(target, car.speed - DECEL * dt);
         if (gap <= 0) car.speed = 0;
-        car.wait = car.speed < 0.05 && !atLight ? car.wait + dt : 0;
         car.roll += car.speed * dt;
         for (const b of car.bumps) b.t += dt;
         car.bumps = car.bumps.filter(b => b.t < BUMP_T);
@@ -892,6 +1028,7 @@
         }
         place(car);
       }
+      for (const [key, c] of conflicts) if (!c.seen) conflicts.delete(key);
     }
 
     /* ---------- mini-map ---------- */
@@ -1153,15 +1290,19 @@
       ctx.drawImage(sceneLayer, 0, 0);
 
       const inView = [view.x - 64, view.y - 64, view.w + 128, view.h + 128];
-      const r = 0.2;
       const visible = [];
       for (const car of cars) {
-        car.box = [car.pos[0] - r, car.pos[0] + r, car.pos[1] - r, car.pos[1] + r];
+        // Footprint box: the car's length along its heading, width across.
+        const [l, w] = car.hero ? [HERO_HALF, HERO_HALF_W] : [CAR_HALF, CAR_HALF_W];
+        const [hu, hv] = car.head.map(Math.abs);
+        const du = hu * l + hv * w, dv = hv * l + hu * w;
+        car.box = [car.pos[0] - du, car.pos[0] + du, car.pos[1] - dv, car.pos[1] + dv];
         const [x, y] = iso(car.pos[0], car.pos[1]);
         if (overlap([x, y, 1, 1], inView)) visible.push(car);
       }
-      visible.sort((a, b) => depth(a) - depth(b));
-      for (const car of visible) {
+      const near = a => visible.filter(b =>
+        Math.abs(a.pos[0] - b.pos[0]) < 1.5 && Math.abs(a.pos[1] - b.pos[1]) < 1.5);
+      for (const car of paintOrder(visible, near, carBefore)) {
         const rect = drawCar(ctx, car);
         // Redraw whatever stands in front of the car, clipped to it.
         const front = [...hash.query(rect)].filter(st => drawsBefore(car, st)).sort(byOrder);
