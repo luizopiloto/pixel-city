@@ -585,7 +585,7 @@
       }
       // Gates half a tile in from the street, where the way out is still
       // straight (the turn onto the street starts at the lot's edge).
-      props.push(['art/parking/gate-l.png', eu + 0.05, v1 - 0.55], ['art/parking/gate-r.png', eu + 0.95, v1 - 0.55]);
+      props.push(['art/parking/gate-l.png', eu + 0.02, v1 - 0.55], ['art/parking/gate-r.png', eu + 0.98, v1 - 0.55]);
       props.push(['art/parking/sign.png', ...sign, [sign[0] - 0.25, sign[0] + 0.25, sign[1] - 0.03, sign[1] + 0.03]]);
       parking = { cars, lead, behind: [sb.bi + 1, sb.bj + sb.bh], ahead: [sb.bi, sb.bj + sb.bh] };
     }
@@ -1715,7 +1715,11 @@
         };
         if (src.includes('parking/gate')) {            // raised as the hero comes near: open 0..1
           const arm = src.includes('gate-l') ? 1 : -1;   // its arm reaches 0.47 along ±u from the post
-          item.box = arm > 0 ? [u - 0.05, u + 0.47, v - 0.05, v + 0.05] : [u - 0.47, u + 0.05, v - 0.05, v + 0.05];
+          // Down, its arm reaches 0.47 along ±u across the lane; raised, only
+          // the post is left there (a car passing beside it is in front).
+          item.shut = arm > 0 ? [u - 0.05, u + 0.47, v - 0.05, v + 0.05] : [u - 0.47, u + 0.05, v - 0.05, v + 0.05];
+          item.post = [u - 0.05, u + 0.05, v - 0.05, v + 0.05];
+          item.box = item.shut;
           Object.assign(item, { pos: [u, v], open: 0 });
           item.frameOf = () => Math.round(item.open * (item.frames - 1));
           gates.push(item);
@@ -2097,6 +2101,7 @@
       for (const g of gates) {
         const near = Math.hypot(hero.pos[0] - g.pos[0], hero.pos[1] - g.pos[1]) < 1.6;
         g.open = Math.min(1, Math.max(0, g.open + (near ? dt : -dt) / GATE_S));
+        g.box = g.open > 0.5 ? g.post : g.shut;
       }
       buckets = new Map();
       for (const car of cars) {
