@@ -117,6 +117,7 @@
   // ROUTE_EDGES blocks long. At the end the hero parks for PARK_S seconds.
   const ROUTE_EDGES = [16, 24];
   const PARK_S = 5;
+  const REFUEL_S = 10;       // seconds at the gas pump
   const CURB = 0.48;         // parked hero's offset from the road center
   // The hero is a Supra (not in TYPES). No contact shadow: on this low, long
   // car it looked like a dark block beside it.
@@ -648,8 +649,11 @@
       entry.push([u0 + 6 + 0.5 + LANE, v0 + 4.55]);                     // to the pump
       const exitLead = [[u0 + 6 + 0.5 + LANE, v0 + 4.45]];
       fillet(exitLead, [u0 + 6.5, v0 + 2.5], [0, -1], [1, 0]);          // right, across the forecourt
-      fillet(exitLead, [ur + 0.5, v0 + 2.5], [1, 0], [0, 1]);           // right, onto the +u street
-      gas = { cars, entry, exitLead, T1: [bi + 2, bj + 2], T2: [bi + 1, bj + 2], exit: [[bi + 2, bj + 1], [bi + 2, bj + 2]] };
+      fillet(exitLead, [ur + 0.5, v0 + 2.5], [1, 0], [0, -1]);          // left, onto the +u street heading -v
+      // Two right turns a tile apart would overlap (a backward kink), so the
+      // way in never turns right onto the +v street at T1 either (noFrom).
+      gas = { cars, entry, exitLead, T1: [bi + 2, bj + 2], T2: [bi + 1, bj + 2], noFrom: [bi + 2, bj + 1],
+        exit: [[bi + 2, bj + 1], [bi + 2, bj]] };
     }
 
     // Town square (2×2 downtown): a row of buildings along its back edge
@@ -1688,7 +1692,7 @@
     while (q.length) {
       const next = [];
       for (const e of q) {
-        if (same(e.at, gas.T1) && !same(e.prev, gas.T2)) {
+        if (same(e.at, gas.T1) && !same(e.prev, gas.T2) && !same(e.prev, gas.noFrom)) {
           const nodes = [gas.T2];
           for (let x = e; x; x = x.up) nodes.unshift(x.at);
           return nodes;
@@ -2379,7 +2383,7 @@
         if (!car.hero && car.path.total - car.s < 3.5) extendWalk(car);
         if (car.hero && car.path.total - car.path.step - car.s < 0.02 && car.speed < 0.02) {
           car.parked += dt;
-          if (car.parked >= PARK_S) {
+          if (car.parked >= (heroRoute.end.fromGas ? REFUEL_S : PARK_S)) {
             heroRoute = planRoute(heroRoute.end);
             car.path = heroRoute.path; car.s = 0; car.parked = 0; car.speed = 0;
           }
