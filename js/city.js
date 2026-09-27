@@ -481,6 +481,95 @@
     });
   }
 
+  /* ---------- loading screen ---------- */
+
+  // 4×7 pixel letters for the loading text.
+  const FONT = {
+    L: ['1000', '1000', '1000', '1000', '1000', '1000', '1111'],
+    O: ['0110', '1001', '1001', '1001', '1001', '1001', '0110'],
+    A: ['0110', '1001', '1001', '1111', '1001', '1001', '1001'],
+    D: ['1110', '1001', '1001', '1001', '1001', '1001', '1110'],
+    I: ['111', '010', '010', '010', '010', '010', '111'],
+    N: ['10001', '11001', '11001', '10101', '10011', '10011', '10001'],
+    G: ['0111', '1000', '1000', '1011', '1001', '1001', '0111'],
+  };
+  const textWidth = t => [...t].reduce((w, ch) => w + FONT[ch][0].length + 1, -1);
+
+  // Overlay shown while the city is built: the hero Supra spinning in the
+  // middle with "LOADING" and animated dots. Returns { finish } to fade it
+  // out; ?loading in the URL keeps it up.
+  function showLoading(root, base, zoom) {
+    const el = document.createElement('div');
+    el.className = 'pixel-city__loading';
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<span class="pixel-city__sr">Loading city…</span>';
+    const c = document.createElement('canvas');
+    c.setAttribute('aria-hidden', 'true');
+    el.appendChild(c);
+    root.appendChild(el);
+    const g = c.getContext('2d');
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const t0 = performance.now();
+    let car = null, done = false, k = 1;
+    const size = () => {
+      const dpr = window.devicePixelRatio || 1;
+      c.width = Math.max(1, Math.floor(root.clientWidth * dpr));
+      c.height = Math.max(1, Math.floor(root.clientHeight * dpr));
+      k = Math.max(1, Math.round(zoom * dpr));
+    };
+    size();
+    const ro = new ResizeObserver(size);
+    ro.observe(root);
+    const hd = k % HD === 0;
+    load(base, `vehicles/${HERO_TYPE}/iso${hd ? `@${HD}x` : ''}.png`).then(im => { car = im; }, () => {});
+    function draw(now) {
+      if (done) return;
+      const t = (now - t0) / 1000;
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, c.width, c.height);
+      g.imageSmoothingEnabled = false;
+      const cx = Math.round(c.width / 2), cy = Math.round(c.height / 2);
+      const [cw, ch] = HERO_CELL, a = hd ? HD : 1;
+      if (car) {
+        const f = still ? 1 : Math.floor(t * 9) % 12;                // frames step 30° around
+        g.fillStyle = 'rgba(0, 0, 0, 0.35)';                          // ground shadow
+        g.beginPath();
+        g.ellipse(cx, cy + 6 * k, 30 * k, 9 * k, 0, 0, Math.PI * 2);
+        g.fill();
+        const [px, py] = HERO_PIVOT[f];                               // per-frame ground point
+        g.drawImage(car, f * cw * a, 0, cw * a, ch * a, cx - px * k, cy + 4 * k - py * k, cw * k, ch * k);
+      }
+      const word = 'LOADING', w = textWidth(word);
+      const dots = still ? 3 : Math.floor(t / 0.35) % 4;
+      let x = cx - Math.round((w + 7) / 2) * k;
+      const y = cy + 24 * k;
+      g.fillStyle = '#d8d0c2';
+      for (const ch of word) {
+        FONT[ch].forEach((row, r) => [...row].forEach((bit, q) => {
+          if (bit === '1') g.fillRect(x + q * k, y + r * k, k, k);
+        }));
+        x += (FONT[ch][0].length + 1) * k;
+      }
+      for (let d = 0; d < dots; d++) g.fillRect(x + d * 2 * k, y + 6 * k, k, k);
+      requestAnimationFrame(draw);
+    }
+    requestAnimationFrame(draw);
+    const hold = new URLSearchParams(location.search).has('loading');
+    return {
+      // Fade out once shown for at least 0.8 s.
+      async finish() {
+        if (hold) return;
+        const wait = 800 - (performance.now() - t0);
+        if (wait > 0) await new Promise(r => setTimeout(r, wait));
+        el.classList.add('pixel-city__loading--done');
+        el.addEventListener('transitionend', () => { done = true; ro.disconnect(); el.remove(); }, { once: true });
+        setTimeout(() => { if (!done) { done = true; ro.disconnect(); el.remove(); } }, 1000);
+      },
+    };
+  }
+
+  const nextFrame = () => new Promise(r => requestAnimationFrame(() => r()));
+
   function drawTile(ctx, img, u, v, mode) {
     const [x, y] = iso(u, v);
     if (!mode) return ctx.drawImage(img, x - HW, y);
@@ -680,7 +769,16 @@
   async function mount(root) {
     const base = root.dataset.assets || 'assets/';
     const zoom = Math.max(1, Number(root.dataset.zoom || 2));
-    const city = generate(mulberry32(Number(root.dataset.seed || 7)));
+    const loading = showLoading(root, base, zoom);
+    // Startup runs in phases with a frame between each, so the loading
+    // animation keeps moving. ?debug logs how long each phase took.
+    const debug = new URLSearchParams(location.search).has('debug');
+    let mark = performance.now();
+    const phase = async name => {
+      if (debug) console.log(`pixel-city: ${name} ${(performance.now() - mark).toFixed(0)} ms`);
+      await nextFrame();
+      mark = performance.now();
+    };
 
     const srcs = new Set([
       ...Object.values(ROAD_TILES).map(([n]) => `tiles/${n}.png`),
@@ -693,6 +791,9 @@
     ]);
     const img = {};
     await Promise.all([...srcs].map(async s => { img[s] = await load(base, s); }));
+    await phase('images');
+    const city = generate(mulberry32(Number(root.dataset.seed || 7)));
+    await phase('generate');
 
     const canvas = document.createElement('canvas');
     canvas.className = 'pixel-city__canvas';
@@ -737,6 +838,8 @@
         }
       }
     });
+
+    await phase('ground');
 
     // Static sprites: world footprint box + screen rect.
     const statics = [];
@@ -786,6 +889,7 @@
     const hash = new ScreenHash(128);
     statics.forEach(s => hash.add(s));
     paintOrder(statics, a => hash.query(a.rect), drawsBefore).forEach((it, i) => { it.order = i; });
+    await phase('statics');
 
     // Ground and static sprites, baked once; a region is re-baked when a
     // traffic light changes.
@@ -1343,10 +1447,12 @@
       }
       requestAnimationFrame(frame);
     }
+    await phase('scene');
     resize();
     follow(Infinity);
     render();
     requestAnimationFrame(frame);
+    loading.finish();
   }
 
   document.querySelectorAll('[data-pixel-city]').forEach(el => {

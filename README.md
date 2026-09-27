@@ -32,7 +32,8 @@ The "Standalone preview only" rules at the end of `css/style.css` make
 python3 -m http.server 8080
 ```
 
-Then open http://localhost:8080.
+Then open http://localhost:8080. Add `?loading` to keep the loading screen
+up, or `?debug` to log how long each startup phase takes.
 
 ## Assets
 
