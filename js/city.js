@@ -92,7 +92,8 @@
   const HOUSES = [1, 2, 3, 4, 5, 6].map(n => `houses/house-${n}.png`);
   const PLAZA_BUILDINGS = ['buildings/shop-6.png', 'buildings/shop-7.png', 'buildings/fastfood.png',
     'buildings/apartment-1.png', 'buildings/apartment-2.png'];
-  const DOWNTOWN_ART = ['buildings/shop-7.png', 'buildings/brick-3.png', 'buildings/office-5.png'];
+  const DOWNTOWN_ART = ['buildings/shop-7.png', 'buildings/brick-3.png', 'buildings/office-8.png'];
+  const HELIPAD_ODDS = 0.2;                        // glass offices with the helipad roof (office-5)
   const TREES = ['oak', 'oak-small', 'maple', 'birch', 'olive', 'pine', 'pine-small'].map(n => `nature/trees/${n}.png`);
   const BUSHES = ['bush', 'bush-small', 'bush-flowers', 'shrub'].map(n => `nature/bushes/${n}.png`);
   const GRASSES = ['grass-a', 'grass-a', 'grass-b', 'grass-lush', 'grass-flowers'].map(n => `art/ground/${n}`);
@@ -545,7 +546,9 @@
     for (const lot of lots) {                       // swap some bare lots for new buildings
       const onStreet = Math.abs((lot[4] - ROAD0) % PITCH) < 0.01;      // front edge on the block's +v road
       if (onStreet && BARE.includes(lot[0]) && lot[2] - lot[1] >= 1.5 && lot[4] - lot[3] >= 1.25 && rng() < 0.35) {
-        const name = pick(DOWNTOWN_ART), [a, b] = fp(name);
+        let name = pick(DOWNTOWN_ART);
+        if (name === 'buildings/office-8.png' && rng() < HELIPAD_ODDS) name = 'buildings/office-5.png';
+        const [a, b] = fp(name);
         if (a <= lot[2] - lot[1] + 0.05 && b <= lot[4] - lot[3] + 0.05) {
           // At the street edge of its lot, leaving the back row's entrances clear.
           const cu = (lot[1] + lot[2]) / 2, front = lot[4] - 0.08;

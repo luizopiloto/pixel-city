@@ -812,7 +812,7 @@ def fan_top(s):
     return shader
 
 
-def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", mart=False,
+def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", mart=False, helipad=True,
              canopy=False):
     rng = np.random.default_rng(seed)
     s = Sprite(300, 380, 150, 290, seed)
@@ -842,16 +842,21 @@ def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", mar
     if kind == "brick":                                   # cornice, then the roof on it
         s.box(x0 - 0.03, y0 - 0.03, hgt - 3, a + 0.06, b + 0.06, 4, flat(s, "#cfc6b6"), flat(s, "#bdb3a2"), flat(s, "#a69c8c"))
         flat_roof(s, x0, y0, a, b, hgt + 1, "#5b5a5c", units=2, rng=rng)
-    elif kind == "office":
+    elif kind == "office" and helipad:
         flat_roof(s, x0, y0, a, b, hgt, "#6e6e6e", units=0, rng=rng)
-        helipad(s, x0, y0, a, b, hgt)
+        draw_helipad(s, x0, y0, a, b, hgt)
+    elif kind == "office":                                # machine room and AC units instead
+        flat_roof(s, x0, y0, a, b, hgt, "#6e6e6e", units=0, rng=rng)
+        s.box(x0 + 0.12, y0 + 0.12, hgt, 0.42, 0.34, 12, flat(s, "#6e6e6e"), flat(s, "#9791a2"), flat(s, "#716f74"))
+        for ux, uy in ((x0 + a - 0.36, y0 + 0.16), (x0 + a - 0.36, y0 + 0.46), (x0 + 0.24, y0 + b - 0.36)):
+            s.box(ux, uy, hgt, 0.16, 0.16, 7, fan_top(s), flat(s, "#9791a2"), flat(s, "#716f74"))
     else:
         flat_roof(s, x0, y0, a, b, hgt, "#6e6e6e", units=2 + (floors > 4), rng=rng)
     s.outline(0.7)
     return s, (a, b)
 
 
-def helipad(s, x0, y0, sx, sy, z):
+def draw_helipad(s, x0, y0, sx, sy, z):
     """Raised square pad centered on the roof: yellow ring, white H, and
     small lights at its corners."""
     side = min(sx, sy) * 0.8
@@ -1680,6 +1685,7 @@ def main():
         ("office", dict(a=1.3, b=1.1, floors=7, wall="#8e8897")),
         ("shop", dict(a=1.4, b=0.9, floors=2, wall="#ae9282")),
         ("shop", dict(a=1.2, b=0.9, floors=1, wall="#a3a07e")),
+        ("office", dict(a=1.3, b=1.1, floors=7, wall="#8e8897", helipad=False)),
     ]
     for i, (kind, kw) in enumerate(bl):
         spr, (fa, fb) = building(300 + i, kind, **kw)
