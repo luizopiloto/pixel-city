@@ -747,7 +747,8 @@
       if (ground === 'paving') pave(u, v); else grassy(u, v);
       artLot(c.civic, u + 1.5, v + 1.5, c.district);
       const [a, b] = fp(c.civic);
-      const off = (uu, vv) => Math.abs(uu - u - 1.5) < a / 2 + 0.25 && Math.abs(vv - v - 1.5) < b / 2 + 0.25;
+      // Not on the building, nor on the two sides facing the camera (+u, +v).
+      const off = (uu, vv) => uu > u + 1.5 - a / 2 - 0.3 && vv > v + 1.5 - b / 2 - 0.3;
       scatter(u, v, 3, 3, ground === 'paving' ? 2 : 4, ground === 'paving' ? ['nature/trees/oak-small.png'] : TREES, off, 0.6);
     }
 
@@ -1168,8 +1169,14 @@
       if (lot[0].startsWith('art:')) keepouts.push([f[0] - x[0], f[1] + x[1], f[2] - x[2], f[3] + x[3]]);
     }
     const inside = (r, u, v) => u > r[0] && u < r[1] && v > r[2] && v < r[3];
+    // Civic buildings stay in view: no trees on their two camera-facing
+    // sides (+u, +v, and the corner between), up to the street.
+    const facades = lots.filter(l => l[0].startsWith('art:civic/'))
+      .map(l => { const f = footprint(l); return [f[0] - 0.3, f[1] + 1.8, f[2] - 0.3, f[3] + 1.8]; });
+    const tall = src => src.includes('/trees/');
     for (let k = props.length - 1; k >= 0; k--) {
-      if (keepouts.some(r => inside(r, props[k][1], props[k][2]))) props.splice(k, 1);
+      if (keepouts.some(r => inside(r, props[k][1], props[k][2])) ||
+        (tall(props[k][0]) && facades.some(r => inside(r, props[k][1], props[k][2])))) props.splice(k, 1);
     }
     const blocked = [];
     for (const [lot, d] of doors) {
