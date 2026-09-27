@@ -1262,6 +1262,106 @@
    36
   ]
  },
+ "beach/lifeguard-tower.png": {
+  "size": [
+   75,
+   109
+  ],
+  "anchor": [
+   39,
+   89
+  ]
+ },
+ "beach/lounger-teal-r1.png": {
+  "size": [
+   58,
+   49
+  ],
+  "anchor": [
+   29,
+   36
+  ]
+ },
+ "beach/lounger-red-r1.png": {
+  "size": [
+   58,
+   49
+  ],
+  "anchor": [
+   29,
+   36
+  ]
+ },
+ "beach/lifeguard-tower-r1.png": {
+  "size": [
+   82,
+   103
+  ],
+  "anchor": [
+   49,
+   89
+  ]
+ },
+ "beach/lounger-teal-r2.png": {
+  "size": [
+   57,
+   37
+  ],
+  "anchor": [
+   28,
+   23
+  ]
+ },
+ "beach/lounger-red-r2.png": {
+  "size": [
+   57,
+   37
+  ],
+  "anchor": [
+   28,
+   23
+  ]
+ },
+ "beach/lifeguard-tower-r2.png": {
+  "size": [
+   75,
+   103
+  ],
+  "anchor": [
+   36,
+   89
+  ]
+ },
+ "beach/lounger-teal-r3.png": {
+  "size": [
+   58,
+   37
+  ],
+  "anchor": [
+   29,
+   23
+  ]
+ },
+ "beach/lounger-red-r3.png": {
+  "size": [
+   58,
+   37
+  ],
+  "anchor": [
+   29,
+   23
+  ]
+ },
+ "beach/lifeguard-tower-r3.png": {
+  "size": [
+   82,
+   109
+  ],
+  "anchor": [
+   33,
+   89
+  ]
+ },
  "beach/towel-purple.png": {
   "size": [
    46,
@@ -1282,14 +1382,24 @@
    12
   ]
  },
- "beach/lifeguard-tower.png": {
+ "beach/towel-purple-r1.png": {
   "size": [
-   75,
-   109
+   46,
+   23
   ],
   "anchor": [
-   39,
-   89
+   23,
+   12
+  ]
+ },
+ "beach/towel-teal-r1.png": {
+  "size": [
+   46,
+   23
+  ],
+  "anchor": [
+   23,
+   12
   ]
  },
  "nature/dune/marram.png": {
@@ -1417,12 +1527,62 @@
  },
  "beach/rowboat.png": {
   "size": [
-   56,
-   35
+   101,
+   50
   ],
   "anchor": [
-   28,
-   21
+   49,
+   24
+  ],
+  "frames": 8,
+  "footprint": [
+   0.84,
+   0.28
+  ]
+ },
+ "beach/rowboat-r1.png": {
+  "size": [
+   98,
+   51
+  ],
+  "anchor": [
+   49,
+   25
+  ],
+  "frames": 8,
+  "footprint": [
+   0.28,
+   0.84
+  ]
+ },
+ "beach/rowboat-r2.png": {
+  "size": [
+   101,
+   50
+  ],
+  "anchor": [
+   50,
+   25
+  ],
+  "frames": 8,
+  "footprint": [
+   0.84,
+   0.28
+  ]
+ },
+ "beach/rowboat-r3.png": {
+  "size": [
+   98,
+   51
+  ],
+  "anchor": [
+   47,
+   25
+  ],
+  "frames": 8,
+  "footprint": [
+   0.28,
+   0.84
   ]
  },
  "beach/hut-teal.png": {
@@ -1461,8 +1621,8 @@
    58
   ],
   "anchor": [
-   64,
-   9
+   88,
+   21
   ]
  },
  "beach/barrel.png": {
@@ -1477,12 +1637,17 @@
  },
  "beach/buoy.png": {
   "size": [
-   10,
-   13
+   50,
+   29
   ],
   "anchor": [
-   5,
-   14
+   25,
+   15
+  ],
+  "frames": 8,
+  "footprint": [
+   0.14,
+   0.14
   ]
  },
  "houses/house-1.png": {

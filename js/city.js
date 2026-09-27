@@ -902,6 +902,8 @@
       const take = (u, v, r = 0) => { for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) taken.add(key(u + a, v + b)); };
       const beachProp = (name, u, v, box) => props.push(['art/' + name, u, v, ...(box ? [box] : [])]);
       const shoreline = ([u, v]) => NB4.some(([a, b]) => sea.has(key(u + a, v + b)));
+      // Turned versions of a beach sprite: <name>-r1 .. -r3, 90° steps.
+      const turned = (name, k) => (k ? name.replace('.png', `-r${k}.png`) : name);
       // The lighthouse: on the front shore tile lowest on screen.
       const tip = sand.filter(t => t[2] > 0.5 && shoreline(t)).sort((a, b) => b[0] + b[1] - a[0] - a[1])[0];
       if (tip) {
@@ -920,11 +922,14 @@
           if (![1, 2, 3, 4, 5].every(k => sea.has(key(u + du * k, v + dv * k)) &&
             sea.has(key(u + du * k + dv, v + dv * k + du)) && sea.has(key(u + du * k - dv, v + dv * k - du)))) continue;
           for (let k = 0; k < 4; k++) {
-            const pu = du ? u + 0.7 + k : u + 0.31, pv = dv ? v + 0.7 + k : v + 0.31;
+            // Sections from their origin corner: along u they span v + [0, 0.38],
+            // along v (turned) u - [0.38, 0].
+            const pu = du ? u + 0.7 + k : u + 0.69, pv = dv ? v + 0.7 + k : v + 0.31;
             take(u + du * (k + 1), v + dv * (k + 1), 1);
-            beachProp(name, pu, pv, [pu, pu + (du ? 1 : 0.38), pv, pv + (dv ? 1 : 0.38)]);
+            beachProp(name, pu, pv, du ? [pu, pu + 1, pv, pv + 0.38] : [pu - 0.38, pu, pv, pv + 1]);
           }
-          beachProp('beach/rowboat.png', u + du * 3.2 + dv * 0.9, v + dv * 3.2 + du * 0.9);
+          beachProp(turned('beach/rowboat.png', (du ? 0 : 1) + 2 * (rng() < 0.5)),        // moored alongside
+            u + du * 3.2 + dv * 0.9, v + dv * 3.2 + du * 0.9);
           piers.push([u, v]);
           take(u, v, 1);
           break;
@@ -945,7 +950,9 @@
         }
         const r = rng();
         if (shoreline([u, v]) && r < 0.08 && !guard.some(([a, b]) => Math.abs(a - u) + Math.abs(b - v) < 12)) {
-          beachProp('beach/lifeguard-tower.png', u + 0.5, v + 0.5);
+          // Facing the sea: the sprite faces +v, turned ones -u, -v, +u.
+          const k = sea.has(key(u, v + 1)) ? 0 : sea.has(key(u - 1, v)) ? 1 : sea.has(key(u, v - 1)) ? 2 : 3;
+          beachProp(turned('beach/lifeguard-tower.png', k), u + 0.5, v + 0.5);
           guard.push([u, v]);
           take(u, v, 1);
         } else if (d <= 2 && r < 0.12) {
@@ -958,11 +965,12 @@
         } else if (d > 1 && r < 0.1 + 0.22 * f) {            // umbrella with a lounger or a towel
           const au = u + 0.15 + rng() * 0.35, av = v + 0.15 + rng() * 0.35;
           beachProp(pick(['beach/umbrella-red.png', 'beach/umbrella-teal.png', 'beach/umbrella-gold.png']), au, av);
-          beachProp(pick(['beach/lounger-teal.png', 'beach/lounger-red.png', 'beach/towel-purple.png', 'beach/towel-teal.png']),
+          const seat = pick(['beach/lounger-teal.png', 'beach/lounger-red.png', 'beach/towel-purple.png', 'beach/towel-teal.png']);
+          beachProp(turned(seat, Math.floor(rng() * (seat.includes('towel') ? 2 : 4))),
             au + 0.28 + rng() * 0.12, av + 0.22 + rng() * 0.12);
           take(u, v);
         } else if (d > 1 && r < 0.14 + 0.28 * f) {           // just a towel
-          beachProp(pick(['beach/towel-purple.png', 'beach/towel-teal.png']), cu, cv);
+          beachProp(turned(pick(['beach/towel-purple.png', 'beach/towel-teal.png']), Math.floor(rng() * 2)), cu, cv);
           take(u, v);
         }
       }
@@ -979,7 +987,7 @@
         const [u, v] = k.split(',').map(Number), d = depth.get(k), f = front(u, v);
         if (f < 0.5 || taken.has(k)) continue;
         if (d === 3 && rng() < 0.22) beachProp('beach/buoy.png', u + 0.5, v + 0.5);
-        else if (d >= 2 && d <= 5 && rng() < 0.006) beachProp('beach/rowboat.png', u + 0.5, v + 0.5);
+        else if (d >= 2 && d <= 5 && rng() < 0.006) beachProp(turned('beach/rowboat.png', Math.floor(rng() * 4)), u + 0.5, v + 0.5);
       }
     }
 

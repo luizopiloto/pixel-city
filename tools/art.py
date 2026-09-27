@@ -39,7 +39,12 @@ def ramp(*hexes):
 
 class Sprite:
     """An RGBA canvas with a depth buffer. World (x, y, z): x, y in tiles
-    along u, v; z in px up. (ox, oy) is where the world origin lands."""
+    along u, v; z in px up. (ox, oy) is where the world origin lands.
+    `rot` turns everything drawn by 90° × rot about the origin (x, y ->
+    -y, x each step), `dz` lifts it by that many px (bobbing)."""
+
+    rot = 0
+    dz = 0.0
 
     def __init__(self, w, h, ox, oy, seed=1):
         self.w, self.h, self.ox, self.oy = w, h, ox, oy
@@ -49,8 +54,16 @@ class Sprite:
         self.rng = np.random.default_rng(seed)
         self.grain = self.rng.random((h, w))
 
+    def R(self, x, y):
+        for _ in range(self.rot % 4):
+            x, y = -y, x
+        return x, y
+
+    def _proj(self, x, y, z=0.0):
+        return self.ox + (x - y) * HW, self.oy + (x + y) * HH - z - self.dz
+
     def proj(self, x, y, z=0.0):
-        return self.ox + (x - y) * HW, self.oy + (x + y) * HH - z
+        return self._proj(*self.R(x, y), z)
 
     def _write(self, mask, ys, xs, depth, color):
         ys, xs, depth, color = ys[mask], xs[mask], depth[mask], color[mask]
@@ -64,10 +77,18 @@ class Sprite:
         """Parallelogram (or triangle o, o+e1, o+e2) in world space. shader(a,
         b, xs, ys) gets face coords a, b in [0, 1) along e1, e2 and the pixel
         coords, and returns N×3 colors."""
+        o, e1, e2 = ((*self.R(v[0], v[1]), v[2]) for v in (o, e1, e2))
+        self._face(o, e1, e2, shader, tri, light)
+
+    def _face(self, o, e1, e2, shader, tri=False, light=1.0):
         o, e1, e2 = (np.array(v, float) for v in (o, e1, e2))
-        so = np.array(self.proj(*o))
-        s1 = np.array(self.proj(*(o + e1))) - so
-        s2 = np.array(self.proj(*(o + e2))) - so
+        if light == "auto":                          # by the (turned) face's facing
+            n = np.cross(e1 * [1, 1, 1 / 64], e2 * [1, 1, 1 / 64])
+            n = n / (np.linalg.norm(n) or 1)
+            light = LIGHT["top"] if abs(n[2]) > 0.9 else (LIGHT["u"] * n[0] ** 2 + LIGHT["v"] * n[1] ** 2) / (n[0] ** 2 + n[1] ** 2 or 1)
+        so = np.array(self._proj(*o))
+        s1 = np.array(self._proj(*(o + e1))) - so
+        s2 = np.array(self._proj(*(o + e2))) - so
         det = s1[0] * s2[1] - s1[1] * s2[0]
         if abs(det) < 1e-6:
             return
@@ -94,6 +115,7 @@ class Sprite:
         """Shaded sphere (squash < 1 flattens it) at world point c, screen
         radius r px, lit from the upper left."""
         cx, cy = self.proj(*c)
+        c = (*self.R(c[0], c[1]), c[2])
         x0, x1 = max(0, int(cx - r - 2)), min(self.w, int(cx + r + 3))
         y0, y1 = max(0, int(cy - r * squash - 2)), min(self.h, int(cy + r * squash + 3))
         if x0 >= x1 or y0 >= y1:
@@ -142,11 +164,16 @@ class Sprite:
         self._write(inside, ys, xs, np.full(len(xs), depth), col)
 
     def box(self, x0, y0, z0, sx, sy, sz, top, wall_v, wall_u):
-        """Axis-aligned box: shaders for its +u face, +v face and top."""
+        """Axis-aligned box: shaders for its +u face, +v face and top. Turned
+        by `rot`, it is still axis-aligned; its walls swap on odd turns."""
+        (ax, ay), (bx, by) = self.R(x0, y0), self.R(x0 + sx, y0 + sy)
+        x0, y0, sx, sy = min(ax, bx), min(ay, by), abs(bx - ax), abs(by - ay)
+        if self.rot % 2:
+            wall_u, wall_v = wall_v, wall_u
         if sz > 0:
-            self.face((x0 + sx, y0, z0), (0, sy, 0), (0, 0, sz), wall_u, light=LIGHT["u"])
-            self.face((x0, y0 + sy, z0), (sx, 0, 0), (0, 0, sz), wall_v, light=LIGHT["v"])
-        self.face((x0, y0, z0 + sz), (sx, 0, 0), (0, sy, 0), top, light=LIGHT["top"])
+            self._face((x0 + sx, y0, z0), (0, sy, 0), (0, 0, sz), wall_u, light=LIGHT["u"])
+            self._face((x0, y0 + sy, z0), (sx, 0, 0), (0, 0, sz), wall_v, light=LIGHT["v"])
+        self._face((x0, y0, z0 + sz), (sx, 0, 0), (0, sy, 0), top, light=LIGHT["top"])
 
     def shadow(self, c, rx, ry, k=0.28):
         """Soft translucent ground shadow (an ellipse in screen space) under
@@ -844,12 +871,16 @@ def gable(s, x0, y0, sx, sy, zw, rh, roof, gable_col, axis="u", over=0.07):
         # back slope, front slope (faces +v), gable end at +u
         s.face((x0 - over, ym, zw + rh), (sx + 2 * over, 0, 0), (0, -(sy / 2 + over), -rh - over * 20), tiles, light=0.8)
         s.face((x0 - over, ym, zw + rh), (sx + 2 * over, 0, 0), (0, sy / 2 + over, -rh - over * 20), tiles, light=LIGHT["v"])
-        s.face((x0 + sx, y0, zw), (0, sy, 0), (0, sy / 2, rh), boards, tri=True, light=LIGHT["u"])
+        s.face((x0 + sx, y0, zw), (0, sy, 0), (0, sy / 2, rh), boards, tri=True, light="auto")
+        if s.rot:                                    # the far end shows once turned
+            s.face((x0, y0, zw), (0, sy, 0), (0, sy / 2, rh), boards, tri=True, light="auto")
     else:
         xm = x0 + sx / 2
         s.face((xm, y0 - over, zw + rh), (0, sy + 2 * over, 0), (-(sx / 2 + over), 0, -rh - over * 20), tiles, light=0.8)
         s.face((xm, y0 - over, zw + rh), (0, sy + 2 * over, 0), (sx / 2 + over, 0, -rh - over * 20), tiles, light=LIGHT["u"])
-        s.face((x0, y0 + sy, zw), (sx, 0, 0), (sx / 2, 0, rh), boards, tri=True, light=LIGHT["v"])
+        s.face((x0, y0 + sy, zw), (sx, 0, 0), (sx / 2, 0, rh), boards, tri=True, light="auto")
+        if s.rot:
+            s.face((x0, y0, zw), (sx, 0, 0), (sx / 2, 0, rh), boards, tri=True, light="auto")
 
 
 def house(seed, a=1.2, b=0.9, floors=1, wall="#a47d6a", roof=None, gable_col="#4f3a30",
@@ -1598,29 +1629,34 @@ def umbrella(seed, color="#8a4a3e"):
     return s
 
 
-def lounger(seed, color="#3f6f73"):
+def lounger(seed, color="#3f6f73", rot=0):
     """Beach lounger along u: frame on legs, seat, raised backrest at -u."""
     s = Sprite(100, 70, 50, 46, seed)
+    s.rot = rot
     frame = ("#cfc6b6", "#bdb3a2", "#a69c8c")
     for x, y in ((-0.3, -0.13), (0.26, -0.13), (-0.3, 0.1), (0.26, 0.1)):
         s.box(x, y, 0, 0.03, 0.03, 7, *(flat(s, c) for c in frame))
     s.box(-0.31, -0.14, 7, 0.6, 0.28, 2, *(flat(s, c) for c in frame))
     fabric = banded(s, [rgb(color), rgb("#d8ccb4")], 7, axis=0)
-    s.face((-0.09, -0.12, 9), (0.38, 0, 0), (0, 0.24, 0), fabric)
-    s.face((-0.09, -0.12, 9), (-0.2, 0, 14), (0, 0.24, 0), fabric, light=0.8)   # backrest faces the viewer
+    s.face((-0.29, -0.12, 9), (0.58, 0, 0), (0, 0.24, 0), fabric)
+    # Backrest, steep enough to read from every side once turned.
+    s.face((-0.15, -0.12, 9), (-0.12, 0, 15), (0, 0.24, 0), fabric, light="auto")
     s.outline()
     s.shadow((0.02, 0.02, 0), 26, 9)
     return s
 
 
-def towel(seed, color="#8f6f9a"):
+def towel(seed, color="#8f6f9a", rot=0):
     s = Sprite(80, 40, 40, 20, seed)
+    s.rot = rot
     s.face((-0.25, -0.12, 0.5), (0.5, 0, 0), (0, 0.24, 0), banded(s, [rgb(color), rgb("#d8ccb4"), rgb(color) * 0.8], 7, axis=0))
     return s
 
 
-def lifeguard(seed):
+def lifeguard(seed, rot=0):
+    """Lifeguard tower facing +v (turned by rot): hut on stilts, ladder."""
     s = Sprite(120, 150, 60, 130, seed)
+    s.rot = rot
     white, red = "#cfc6b6", "#8a4a3e"
     for x, y in ((-0.2, -0.2), (0.2, -0.2), (-0.2, 0.2), (0.2, 0.2)):
         s.box(x - 0.02, y - 0.02, 0, 0.04, 0.04, 40, flat(s, white), flat(s, "#bdb3a2"), flat(s, "#a69c8c"))
@@ -1630,22 +1666,47 @@ def lifeguard(seed):
           wall_shader(s, white, 26, 26, 1, [(0.2, 0.8)], None, None, "boards"))
     gable(s, -0.18, -0.18, 0.36, 0.36, 70, 12, ramp(red, "#7a3f35"), red, "u", 0.05)
     # Ladder: from the sand in front up to the platform's front edge.
-    s.face((-0.06, 0.56, 0), (0.12, 0, 0), (0, -0.3, 40), banded(s, [rgb("#8a6751"), rgb("#5f4646")], 10), light=LIGHT["v"])
+    s.face((-0.06, 0.56, 0), (0.12, 0, 0), (0, -0.3, 40), banded(s, [rgb("#8a6751"), rgb("#5f4646")], 10), light="auto")
     s.outline()
     s.shadow((0.1, 0.1, 0), 36, 14)
     return s
 
 
-def rowboat(seed, color="#3f6f73"):
-    s = Sprite(130, 70, 65, 40, seed)
+def ripples(s, rx, ry, p, color="#8ec4cc"):
+    """Two rings spreading on the water around an object (ellipse radii rx,
+    ry in tiles along u, v, turned with the sprite), fading as they grow."""
+    dz, s.dz = s.dz, 0.0
+    for q in (p % 1, (p + 0.5) % 1):
+        grow = 0.05 + 0.22 * q
+        n = 40
+        for k in range(n):
+            if (k * 7919) % 100 < 100 * q * 0.9:                 # thin out as it fades
+                continue
+            t = 2 * math.pi * k / n
+            x, y = (rx + grow) * math.cos(t), (ry + grow) * math.sin(t)
+            px, py = s.proj(x, y, 0)
+            X, Y = s.R(x, y)
+            s.line((px, py), (px + 1, py), rgb(color), X + Y - 0.3)
+    s.dz = dz
+
+
+def rowboat(seed, color="#3f6f73", rot=0, p=None):
+    """Rowboat along u (turned by rot). With a phase p it bobs on ripples."""
+    s = Sprite(130, 80, 65, 44, seed)
+    s.rot = rot
+    if p is not None:
+        ripples(s, 0.44, 0.16, p)
+        s.dz = 1.2 * math.sin(2 * math.pi * p)
     hull, inner = rgb("#cfc6b6"), rgb("#6b553a")
     L, W, H = 0.42, 0.14, 9
     stripe = lambda a, b, xs, ys: np.where((b > 0.55)[:, None] & (b < 0.8)[:, None], rgb(color), hull) + (s.grain[ys, xs] - 0.5)[:, None] * 6
-    # sides
-    s.face((-L + 0.12, W, 0), (2 * L - 0.24, 0, 0), (0, 0, H), stripe, light=LIGHT["v"])
-    s.face((L - 0.12, W, 0), (0.12, -W, 0), (0, 0, H), stripe, light=0.8)
-    s.face((L - 0.12, -W, 0), (0.12, W, 0), (0, 0, H), stripe, light=LIGHT["u"])
-    s.face((-L + 0.12, W, 0), (-0.12, -W, 0), (0, 0, H), stripe, light=0.95)
+    # sides, all round (depth hides the far ones)
+    s.face((-L + 0.12, W, 0), (2 * L - 0.24, 0, 0), (0, 0, H), stripe, light="auto")
+    s.face((-L + 0.12, -W, 0), (2 * L - 0.24, 0, 0), (0, 0, H), stripe, light="auto")
+    s.face((L - 0.12, W, 0), (0.12, -W, 0), (0, 0, H), stripe, light="auto")
+    s.face((L - 0.12, -W, 0), (0.12, W, 0), (0, 0, H), stripe, light="auto")
+    s.face((-L + 0.12, W, 0), (-0.12, -W, 0), (0, 0, H), stripe, light="auto")
+    s.face((-L + 0.12, -W, 0), (-0.12, W, 0), (0, 0, H), stripe, light="auto")
     # inside
     s.face((-L + 0.12, -W, H - 2), (2 * L - 0.24, 0, 0), (0, 2 * W, 0), flat(s, inner), light=0.8)
     s.face((L - 0.12, -W, H - 2), (0.12, W, 0), (0, 2 * W, 0), flat(s, inner), tri=True, light=0.8)
@@ -1667,9 +1728,13 @@ def beach_hut(seed, stripe="#3f6f73"):
     return s
 
 
-def pier(seed, length=1.0):
-    """Wooden pier section along u on posts, sitting on water."""
+def pier(seed, length=1.0, rot=0):
+    """Wooden pier section along u on posts, sitting on water (turned by
+    rot: 1 runs it along v, spanning u in [-0.38, 0])."""
     s = Sprite(int(64 * length) + 90, int(32 * length) + 80, 45, 40, seed)
+    s.rot = rot
+    if rot % 2:                                          # along v it runs off to the left
+        s.ox = s.w - 45
     for x in (0.05, length - 0.05):
         for y in (0.02, 0.36):
             s.box(x - 0.025, y - 0.025, -6, 0.05, 0.05, 12, flat(s, "#3e281b"), flat(s, "#4f3423"), flat(s, "#38261b"))
@@ -1932,8 +1997,12 @@ def barrel(seed):
     return s
 
 
-def buoy(seed):
-    s = Sprite(30, 40, 15, 30, seed)
+def buoy(seed, p=None):
+    """Red buoy; with a phase p it bobs on ripples."""
+    s = Sprite(50, 50, 25, 36, seed)
+    if p is not None:
+        ripples(s, 0.07, 0.07, p)
+        s.dz = 1.5 * math.sin(2 * math.pi * p)
     s.blob((0, 0, 5), 5, ramp("#6a2a24", "#8a3a30", "#a8564a", "#c07060"), squash=0.8)
     s.blob((0, 0, 11), 3, ramp("#9a9488", "#b8b0a2", "#d8ccb4"))
     s.outline()
@@ -2042,11 +2111,15 @@ def main():
     save(umbrella(101, "#8a4a3e"), "beach/umbrella-red.png")
     save(umbrella(102, "#3f6f73"), "beach/umbrella-teal.png")
     save(umbrella(103, "#8f7a3a"), "beach/umbrella-gold.png")
-    save(lounger(104, "#3f6f73"), "beach/lounger-teal.png")
-    save(lounger(105, "#8a4a3e"), "beach/lounger-red.png")
-    save(towel(106, "#8f6f9a"), "beach/towel-purple.png")
-    save(towel(107, "#3f6f73"), "beach/towel-teal.png")
-    save(lifeguard(108), "beach/lifeguard-tower.png")
+    # Turned versions: <name>-r1 .. -r3 (90° steps, x, y -> -y, x).
+    turn = lambda k: "" if k == 0 else f"-r{k}"
+    for k in range(4):
+        save(lounger(104, "#3f6f73", rot=k), f"beach/lounger-teal{turn(k)}.png")
+        save(lounger(105, "#8a4a3e", rot=k), f"beach/lounger-red{turn(k)}.png")
+        save(lifeguard(108, rot=k), f"beach/lifeguard-tower{turn(k)}.png")        # faces +v, -u, -v, +u
+    for k in range(2):
+        save(towel(106, "#8f6f9a", rot=k), f"beach/towel-purple{turn(k)}.png")
+        save(towel(107, "#3f6f73", rot=k), f"beach/towel-teal{turn(k)}.png")
     save(marram(130), "nature/dune/marram.png")
     # Recreation: suburb BBQ areas and playgrounds, downtown squares.
     save(picnic_table(150), "rec/picnic-table.png")
@@ -2060,13 +2133,15 @@ def main():
     save(creeper(133, "#d8c060", spread=0.14), "nature/dune/sea-daisy.png")
     spr, lamp = lighthouse(140)
     save(spr, "landmarks/lighthouse.png", footprint=[0.92, 0.92], lamp=[0, -lamp])
-    save(rowboat(109, "#3f6f73"), "beach/rowboat.png")
+    for k in range(4):                                                 # bobbing on ripples
+        save_anim([rowboat(109, "#3f6f73", k, f / 8) for f in range(8)], f"beach/rowboat{turn(k)}.png",
+                  footprint=[0.84, 0.28] if k % 2 == 0 else [0.28, 0.84])
     save(beach_hut(110, "#3f6f73"), "beach/hut-teal.png")
     save(beach_hut(111, "#8a4a3e"), "beach/hut-red.png")
     save(pier(112, 1.0), "beach/pier.png")
-    save(pier(112, 1.0), "beach/pier-v.png", mirror=True)             # along v
+    save(pier(112, 1.0, rot=1), "beach/pier-v.png")                  # along v
     save(barrel(113), "beach/barrel.png")
-    save(buoy(114), "beach/buoy.png")
+    save_anim([buoy(114, f / 8) for f in range(8)], "beach/buoy.png", footprint=[0.14, 0.14])
     # Suburb houses
     variants = [
         dict(wall="#a47d6a", floors=1, a=1.2, b=0.9, axis="u"),
