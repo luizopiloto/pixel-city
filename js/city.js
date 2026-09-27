@@ -84,6 +84,9 @@
   const SEA_BACK = 2, SEA_FRONT = 4;
   const LONG_SHAPES = [[1, 2], [1, 2], [1, 2], [2, 1], [2, 1], [2, 1], [1, 3], [3, 1]];
   const SUBURB_SHAPES = [[1, 2], [1, 3], [2, 1], [3, 1]];
+  // 2×2 squares: buildings around a recreation area (a grass town square
+  // downtown, a BBQ area or a playground in suburbs).
+  const DOWNTOWN_SQUARES = [3, 5], SUBURB_PER_SQUARE = 25;
   // Districts attached to downtown's sides: [type, min cells, max cells].
   const DISTRICTS = { suburb: [40, 60], park: [22, 36], plaza: [22, 32] };
   // Civic landmarks each district type may get: at most one of each per
@@ -313,7 +316,7 @@
     // superblocks, kept apart from each other, then the long 1×2 … 3×1
     // blocks, which may sit beside other merged blocks but never overlap.
     const supers = [];
-    function merge(count, shapes, apart, type = 'downtown', district = -1) {
+    function merge(count, shapes, apart, type = 'downtown', district = -1, kind = 'block') {
       for (let tries = 0, placed = 0; placed < count && tries < 4000; tries++) {
         const [bw, bh] = shapes[Math.floor(rng() * shapes.length)];
         const bi = Math.floor(rng() * (IU - bw + 1)), bj = Math.floor(rng() * (IV - bh + 1));
@@ -326,15 +329,19 @@
         if (!ok) continue;
         const k = supers.length;
         for (let a = bi; a < bi + bw; a++) for (let b = bj; b < bj + bh; b++) cellAt(a, b).sup = k;
-        supers.push({ type, district: cellAt(bi, bj).district, bi, bj, bw, bh, u0: roadAt(bi) + 1, u1: roadAt(bi + bw), v0: roadAt(bj) + 1, v1: roadAt(bj + bh) });
+        supers.push({ type, kind, district: cellAt(bi, bj).district, bi, bj, bw, bh, u0: roadAt(bi) + 1, u1: roadAt(bi + bw), v0: roadAt(bj) + 1, v1: roadAt(bj + bh) });
         placed++;
       }
     }
     merge(SUPER_COUNT, [[3, 2], [2, 3]], true);
+    merge(DOWNTOWN_SQUARES[0] + Math.floor(rng() * (DOWNTOWN_SQUARES[1] - DOWNTOWN_SQUARES[0] + 1)), [[2, 2]], true,
+      'downtown', -1, 'square');
     const typed = (t, d = -1) => [...cells.values()].filter(c => c.type === t && (d < 0 || c.district === d)).length;
     merge(Math.round(typed('downtown') / CELLS_PER_LONG), LONG_SHAPES, false);
     districts.forEach((d, id) => {
-      if (d.type === 'suburb') merge(Math.round(typed('suburb', id) / SUBURB_PER_LONG), SUBURB_SHAPES, false, 'suburb', id);
+      if (d.type !== 'suburb') return;
+      merge(Math.max(1, Math.round(typed('suburb', id) / SUBURB_PER_SQUARE)), [[2, 2]], false, 'suburb', id, 'square');
+      merge(Math.round(typed('suburb', id) / SUBURB_PER_LONG), SUBURB_SHAPES, false, 'suburb', id);
     });
 
     // Roads: a segment between two lattice nodes exists when a cell beside
@@ -427,6 +434,7 @@
       const [a, b] = fp(name);
       lots.push(['art:' + name, cu - a / 2, cu + a / 2, cv - b / 2, cv + b / 2, district]);
     };
+    const artProp = (name, u, v) => props.push(['art/' + name, u, v]);
 
     // Block templates. (u, v) is the block's top tile; offsets are in [0, 3).
     const T = {
@@ -519,12 +527,46 @@
       }
     }
 
-    supers.filter(sb => sb.type === 'downtown').forEach(downtown);
+    // Town square (2×2 downtown): a row of buildings along its back edge
+    // facing in and one along its street edge, around a grass square with a
+    // fountain, corner trees, benches, lamps and flower beds.
+    function townSquare({ u0, u1, v0, v1 }) {
+      const lu = u1 - u0, cu = u0 + lu / 2, cv = v0 + (v1 - v0) / 2;
+      pave(u0, v0, lu, v1 - v0);
+      const cols = [];
+      let rest = lu;
+      while (rest >= 1.5) {
+        const w = rest >= 2.1 && rng() < 0.55 ? 2.1 : 1.5;
+        cols.push(w);
+        rest -= w;
+      }
+      for (const v of [v0, v1 - ROW]) {
+        let u = u0 + rest / 2;
+        for (const w of cols) {
+          lots.push([w > 2 ? pick(DRESSED) : pick(BARE), u, u + w, v, v + ROW]);
+          u += w;
+        }
+      }
+      for (let u = u0 + 1; u < u1 - 1; u++) for (let v = v0 + 2; v < v1 - 2; v++) setGround(u, v, pick(GRASSES));
+      setGround(Math.floor(cu), Math.floor(cv), 'paving');
+      artProp('rec/fountain.png', cu, cv);
+      prop('props/bench-nw.png', cu - 1.25, cv);
+      prop('props/bench-nw.png', cu + 1.25, cv);
+      prop('props/bench-ne.png', cu, cv - 0.95);
+      prop('props/bench-ne.png', cu, cv + 0.95);
+      for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        artProp(pick(CITY_TREES), cu + a * 2.05, cv + b * 1.05);
+        if (rng() < 0.6) artProp('nature/flowers/flower-bed.png', cu + a * 1.1, cv + b * 1.05);
+      }
+      prop('lamp-white.png', cu - 2.3, cv);
+      prop('lamp-white.png', cu + 2.3, cv);
+    }
+
+    supers.filter(sb => sb.type === 'downtown').forEach(sb => (sb.kind === 'square' ? townSquare : downtown)(sb));
 
     // Art sprites (assets/art, see tools/art.py) stand at their footprint
     // center: lots as ['art:<name>', u0, u1, v0, v1, district], props as
     // ['art/<name>', u, v].
-    const artProp = (name, u, v) => props.push(['art/' + name, u, v]);
     // Trees and bushes spread over an area, kept apart and off `blocked`.
     function scatter(u0, v0, lu, lv, count, names, blocked = () => false, gap = 0.45) {
       const spots = [];
@@ -575,6 +617,37 @@
         const count = Math.round((2 + rng() * 3) * lu / BLOCK);
         if (back - top > 0.6) scatter(sb.u0, top, lu, back - top - 0.15, count, [...TREES, ...BUSHES], () => false, 0.55);
       }
+    }
+
+    // Suburb square (2×2): houses along the street and a second row facing
+    // in, around a shared BBQ area (patio, picnic tables, barbecues) or a
+    // playground (sand pad, swings, slide, seesaw, benches), with trees.
+    function suburbSquare(sb) {
+      const { u0, u1, v0, v1 } = sb, lu = u1 - u0;
+      grassy(u0, v0, lu, v1 - v0);
+      const back = houseRow(u0, lu, v1, sb.district, false);
+      houseRow(u0, lu, v0 + 2.3, sb.district, false);
+      const m0 = Math.ceil(v0 + 2.75), m1 = Math.floor(back - 0.15);       // middle, whole tiles
+      if (m1 - m0 < 1) return;
+      const cu = u0 + lu / 2, cv = (m0 + m1) / 2;
+      const bbq = rng() < 0.5;
+      for (let u = u0 + 2; u < u1 - 2; u++) for (let v = m0; v < m1; v++) {
+        setGround(u, v, bbq ? 'paving' : 'art/ground/sand-b');
+      }
+      if (bbq) {
+        artProp('rec/picnic-table.png', cu - 0.7, cv - 0.35);
+        artProp('rec/picnic-table.png', cu + 0.7, cv - 0.35);
+        if (m1 - m0 > 1) artProp('rec/picnic-table.png', cu, cv + 0.55);
+        artProp('rec/barbecue.png', u0 + 1.5, cv);
+        if (rng() < 0.5) artProp('rec/barbecue.png', u1 - 1.5, cv);
+      } else {
+        artProp('rec/swing-set.png', cu - 0.6, cv - 0.3);
+        artProp('rec/slide.png', cu + 0.9, cv - 0.25);
+        if (m1 - m0 > 1) artProp('rec/seesaw.png', cu - 0.3, cv + 0.6);
+        prop('props/bench-nw.png', u0 + 1.5, cv);
+        prop('props/bench-nw.png', u1 - 1.5, cv);
+      }
+      for (const u of [u0 + 0.55, u1 - 0.55]) artProp(pick(TREES), u, cv + (rng() - 0.5) * 0.8);
     }
 
     // Civic landmarks first: each district gets at most one of each kind
@@ -633,7 +706,7 @@
       }
     }
 
-    supers.filter(sb => sb.type === 'suburb').forEach(suburbBlock);
+    supers.filter(sb => sb.type === 'suburb').forEach(sb => (sb.kind === 'square' ? suburbSquare : suburbBlock)(sb));
     for (const c of free) {
       const u = roadAt(c.i) + 1, v = roadAt(c.j) + 1;
       if (c.type === 'downtown') { if (c.civic) civicCell(c, u, v, 'paving'); continue; }

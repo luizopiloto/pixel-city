@@ -1787,6 +1787,121 @@ def creeper(seed, flower="#c77aa0", spread=0.2):
     return s
 
 
+# ---------- recreation ----------
+
+REC_WOOD = ("#8a6751", "#765743", "#5f4646")
+BRICK = ("#8a4a3e", "#7d4a3e", "#6a3a30")
+
+
+def picnic_table(seed):
+    """Wooden picnic table with a bench along each long side."""
+    s = Sprite(90, 60, 45, 38, seed)
+    wood = [flat(s, c, 6) for c in REC_WOOD]
+    for y in (-0.2, 0.14):                                          # benches
+        for x in (-0.22, 0.2):
+            s.box(x, y + 0.02, 0, 0.02, 0.02, 5, *wood)
+        s.box(-0.26, y, 5, 0.52, 0.07, 2, *wood)
+    for x in (-0.2, 0.18):                                          # legs
+        s.box(x, -0.08, 0, 0.03, 0.18, 9, *wood)
+    s.box(-0.28, -0.12, 9, 0.56, 0.24, 2, banded(s, [rgb(c) for c in REC_WOOD[:2]], 5, axis=1), *wood[1:])
+    s.outline(0.75)
+    return s
+
+
+def barbecue(seed):
+    """Brick barbecue: a waist-high brick stand, dark grate, back chimney."""
+    s = Sprite(80, 80, 40, 60, seed)
+    brick = [flat(s, c, 8) for c in BRICK]
+
+    def grate(a, b, xs, ys):
+        bars = np.mod(a * 12, 1) < 0.4
+        return np.where(bars[:, None], rgb("#4a494b"), rgb("#2e2a28")) + (s.grain[ys, xs] - 0.5)[:, None] * 4
+    s.box(-0.2, -0.12, 0, 0.4, 0.24, 11, grate, brick[1], brick[2])
+    s.box(-0.2, -0.16, 0, 0.4, 0.05, 20, brick[0], brick[1], brick[2])      # back wall
+    s.box(-0.07, -0.16, 20, 0.14, 0.06, 9, flat(s, "#5b5a5c"), brick[1], brick[2])  # chimney
+    s.blob((0.0, 0.0, 12), 1.6, ramp("#8a3a28", "#c8641c", "#f2a040"))       # embers
+    s.outline(0.75)
+    return s
+
+
+def swing_set(seed):
+    """Swing set: two posts and a top bar along u, two seats on chains."""
+    s = Sprite(120, 90, 60, 68, seed)
+    steel = [flat(s, c, 3) for c in ("#3f6f73", "#34595c", "#2a4749")]
+    for x in (-0.4, 0.38):
+        for y in (-0.12, 0.1):
+            s.box(x, y, 0, 0.025, 0.025, 28, *steel)
+    s.box(-0.41, -0.01, 28, 0.82, 0.03, 2, *steel)
+    for x in (-0.18, 0.14):
+        top = s.proj(x + 0.02, 0.0, 28)
+        seat = s.proj(x + 0.02, 0.0, 7)
+        for dx in (-3, 3):
+            s.line((top[0] + dx, top[1]), (seat[0] + dx, seat[1]), rgb("#9791a2"), x + 0.2)
+        s.box(x - 0.03, -0.05, 6, 0.1, 0.1, 1, flat(s, "#8a3a32"), flat(s, "#6e2420"), flat(s, "#5a1e1a"))
+    s.outline(0.8)
+    return s
+
+
+def slide(seed):
+    """Playground slide: a ladder up to a small deck, the chute down +u."""
+    s = Sprite(110, 90, 50, 64, seed)
+    steel = [flat(s, c, 3) for c in ("#9791a2", "#716f74", "#5b5a5c")]
+    for x in (-0.3, -0.12):
+        for y in (-0.09, 0.07):
+            s.box(x, y, 0, 0.025, 0.025, 18, *steel)
+    s.box(-0.31, -0.1, 18, 0.21, 0.2, 2, flat(s, "#c9a84a"), flat(s, "#a88a38"), flat(s, "#86692c"))
+    for z in (4, 9, 14):                                          # ladder rungs on the -u side
+        s.box(-0.33, -0.08, z, 0.02, 0.16, 1, *steel)
+    yellow = rgb("#c8a030")
+
+    def chute(a, b, xs, ys):
+        rail = (b < 0.18) | (b > 0.82)
+        return np.where(rail[:, None], yellow * 0.8, yellow) + (s.grain[ys, xs] - 0.5)[:, None] * 4
+    s.face((-0.1, -0.08, 19), (0.5, 0, -17), (0, 0.16, 0), chute, light=0.95)
+    s.box(0.38, -0.08, 0, 0.03, 0.16, 2, *steel)
+    s.outline(0.8)
+    return s
+
+
+def seesaw(seed):
+    """Seesaw: a red plank tilted over a small pivot, handles at each end."""
+    s = Sprite(90, 60, 45, 40, seed)
+    s.box(-0.04, -0.04, 0, 0.08, 0.08, 6, flat(s, "#5b5a5c"), flat(s, "#4a494b"), flat(s, "#3e3d3f"))
+    red = rgb("#8a3a32")
+    s.face((-0.42, -0.04, 1), (0.84, 0, 11), (0, 0.08, 0), flat(s, red, 4), light=0.95)
+    s.face((-0.42, 0.04, 1), (0.84, 0, 11), (0, 0, 2), flat(s, red * 0.7, 3), light=0.9)
+    for x, z in ((-0.33, 2), (0.33, 10)):
+        s.box(x, -0.01, z, 0.02, 0.02, 5, flat(s, "#2e3336"), flat(s, "#2e3336"), flat(s, "#2e3336"))
+    s.outline(0.8)
+    return s
+
+
+def fountain(seed):
+    """Town square fountain: round stone basin of water, a pedestal with an
+    upper bowl, and a spout of water on top."""
+    s = Sprite(130, 110, 65, 70, seed)
+    stone = rgb("#c9bfae")
+    ring(s, 0.46, 0, 6, lambda k: flat(s, stone * 0.95, 5), n=24)
+    disk(s, 0.46, 6, flat(s, stone * 1.08, 4), n=24)
+    water = ramp("#2f8191", "#3e92a2", "#5aa8b4")
+
+    def pool(a, b, xs, ys):
+        return np.array(water)[(xs // 3 + ys) % 3] + (s.grain[ys, xs] - 0.5)[:, None] * 6
+    disk(s, 0.4, 6.5, pool, n=24)
+    ring(s, 0.06, 6, 16, lambda k: flat(s, stone, 4), n=10)
+    ring(s, 0.18, 22, 3, lambda k: flat(s, stone * 0.92, 4), n=16)
+    disk(s, 0.18, 25, flat(s, stone * 1.1, 4), n=16)
+    disk(s, 0.14, 25.5, pool, n=16)
+    s.blob((0, 0, 30), 2.2, ramp("#8ec4cc", "#b8dce0", "#e0f0f0"), squash=1.4)
+    for k in range(6):                                          # water falling from the bowl
+        t = 2 * math.pi * k / 6
+        x0, y0 = 0.17 * math.cos(t), 0.17 * math.sin(t)
+        top, bot = s.proj(x0, y0, 24), s.proj(x0 * 1.3, y0 * 1.3, 7)
+        s.line(top, bot, rgb("#b8dce0"), x0 + y0 + 0.2)
+    s.outline(0.75)
+    return s
+
+
 def barrel(seed):
     s = Sprite(40, 50, 20, 40, seed)
     for z in range(0, 14, 2):
@@ -1893,6 +2008,13 @@ def main():
     save(towel(107, "#3f6f73"), "beach/towel-teal.png")
     save(lifeguard(108), "beach/lifeguard-tower.png")
     save(marram(130), "nature/dune/marram.png")
+    # Recreation: suburb BBQ areas and playgrounds, downtown squares.
+    save(picnic_table(150), "rec/picnic-table.png")
+    save(barbecue(151), "rec/barbecue.png")
+    save(swing_set(152), "rec/swing-set.png")
+    save(slide(153), "rec/slide.png")
+    save(seesaw(154), "rec/seesaw.png")
+    save(fountain(155), "rec/fountain.png")
     save(marram(131), "nature/dune/marram-b.png")
     save(creeper(132, "#c77aa0"), "nature/dune/morning-glory.png")
     save(creeper(133, "#d8c060", spread=0.14), "nature/dune/sea-daisy.png")

@@ -1302,6 +1302,66 @@
    11
   ]
  },
+ "rec/picnic-table.png": {
+  "size": [
+   59,
+   37
+  ],
+  "anchor": [
+   30,
+   24
+  ]
+ },
+ "rec/barbecue.png": {
+  "size": [
+   43,
+   46
+  ],
+  "anchor": [
+   20,
+   36
+  ]
+ },
+ "rec/swing-set.png": {
+  "size": [
+   68,
+   61
+  ],
+  "anchor": [
+   34,
+   44
+  ]
+ },
+ "rec/slide.png": {
+  "size": [
+   57,
+   48
+  ],
+  "anchor": [
+   26,
+   33
+  ]
+ },
+ "rec/seesaw.png": {
+  "size": [
+   58,
+   21
+  ],
+  "anchor": [
+   29,
+   18
+  ]
+ },
+ "rec/fountain.png": {
+  "size": [
+   84,
+   54
+  ],
+  "anchor": [
+   42,
+   33
+  ]
+ },
  "nature/dune/marram-b.png": {
   "size": [
    27,
