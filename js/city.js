@@ -129,7 +129,6 @@
 
   /* ---------- traffic tuning ---------- */
 
-  const CELLS_PER_SIGNAL = 8;              // one signalised crossing per this many cells
   const SIGNAL_CYCLE = [                   // seconds per phase
     { u: 'green', v: 'red', t: 6 }, { u: 'amber', v: 'red', t: 1.4 },
     { u: 'red', v: 'red', t: 0.8 }, { u: 'red', v: 'green', t: 6 },
@@ -414,21 +413,17 @@
       prop('props/bin-gray.png', u + 1.2, v + 1.25);
     };
 
-    // Intersections with traffic lights: full crossings, spread apart.
+    // Traffic lights at every 4-way crossing touching downtown or plaza.
+    // Green wave: a crossing one block further along +u or +v turns green
+    // one block's drive later, so cars heading +u or +v meet mostly greens.
     const signals = [];
-    const candidates = [];
     for (let i = 1; i < IU; i++) for (let j = 1; j < IV; j++) {
       const u = roadAt(i), v = roadAt(j);
       const around = [cellAt(i - 1, j - 1), cellAt(i, j - 1), cellAt(i - 1, j), cellAt(i, j)];
-      const busy = around.every(c => c && (c.type === 'downtown' || c.type === 'plaza'));
-      if (busy && NB4.every(([du, dv]) => isRoad(u + du, v + dv))) candidates.push([i, j]);
-    }
-    shuffle(candidates);
-    const signalCount = Math.round(cells.size / CELLS_PER_SIGNAL);
-    for (const [i, j] of candidates) {
-      if (signals.length === signalCount) break;
-      if (signals.some(sg => Math.abs(sg.i - i) + Math.abs(sg.j - j) < 3)) continue;
-      signals.push({ i, j, u: roadAt(i), v: roadAt(j), offset: rng() * CYCLE_T });
+      const busy = around.some(c => c && (c.type === 'downtown' || c.type === 'plaza'));
+      if (!busy || !isRoad(u, v) || !NB4.every(([du, dv]) => isRoad(u + du, v + dv))) continue;
+      const wave = -(i + j) * PITCH / CRUISE + (rng() - 0.5) * 0.6;
+      signals.push({ i, j, u, v, offset: ((wave % CYCLE_T) + CYCLE_T) % CYCLE_T });
     }
     const signalAt = new Map(signals.map((sg, k) => [key(sg.u, sg.v), k]));
 
@@ -1119,7 +1114,9 @@
     }
     const blockedDoors = blocked.length;
 
-    const nearSignal = (u, v) => NB4.some(([du, dv]) => signalAt.has(key(u + du, v + dv)));
+    // Crosswalks on the approaches to every 4-way crossing.
+    const isCross = (u, v) => isRoad(u, v) && NB4.every(([du, dv]) => isRoad(u + du, v + dv));
+    const nearCross = (u, v) => NB4.some(([du, dv]) => isCross(u + du, v + dv));
 
     function ground(u, v) {
       if (isRoad(u, v)) {
@@ -1128,7 +1125,7 @@
         if (isRoad(u, v - 1)) k += 'e';
         if (isRoad(u + 1, v)) k += 's';
         if (isRoad(u, v + 1)) k += 'w';
-        if ((k === 'ns' || k === 'ew') && nearSignal(u, v)) k += 'x';
+        if ((k === 'ns' || k === 'ew') && nearCross(u, v)) k += 'x';
         return ROAD_TILES[k];
       }
       if (!isLand(u, v)) return null;
@@ -1753,16 +1750,18 @@
       return SIGNAL_CYCLE[0];
     };
     const light = (k, axis) => phaseOf(city.signals[k])[axis];
-    const heads = [];
+    // Drawn every frame with the animated sprites (not baked), so a light
+    // change costs no repaint.
     city.signals.forEach((sig, k) => {
       for (const [axis, tag, [ax, ay], du, dv] of [
         ['v', 'a', [14.5, 61], 0.96, 0.96],
         ['u', 'b', [7.5, 60], 0.96, 0.04],
       ]) {
         const u = sig.u + du, v = sig.v + dv;
-        const [x, y] = iso(u, v);
-        const item = addStatic(() => img[`props/signal-${tag}-${light(k, axis)}.png`], x - ax, y - ay, pointBox(u, v));
-        heads.push({ item, k, axis, shown: light(k, axis) });
+        const [x, y] = iso(u, v), first = img[`props/signal-${tag}-red.png`];
+        const rect = [Math.round(x - ax), Math.round(y - ay), first.width, first.height];
+        animated.push({ rect, box: pointBox(u, v),
+          draw: c => c.drawImage(img[`props/signal-${tag}-${light(k, axis)}.png`], rect[0], rect[1]) });
       }
     });
 
@@ -1777,8 +1776,7 @@
     await phase('statics');
 
     // The baked scene (ground + static sprites) lives in CHUNK_W × CHUNK_H
-    // chunks, drawn when first needed and kept in a small LRU cache; a traffic
-    // light change repaints just its rect in the chunks already drawn.
+    // chunks, drawn when first needed and kept in a small LRU cache.
     // The cache holds at least CHUNK_CAP chunks, and always the visible ones
     // plus the ring around them, so prebaking a neighbor never evicts another.
     const CHUNK_W = 1024, CHUNK_H = 512, CHUNK_CAP = 24;
@@ -1831,15 +1829,6 @@
     const chunkRange = ([x, y, w, h]) => [
       Math.floor(x / CHUNK_W), Math.floor((x + w - 1) / CHUNK_W),
       Math.floor(y / CHUNK_H), Math.floor((y + h - 1) / CHUNK_H)];
-    function rebake(rect) {
-      const [i0, i1, j0, j1] = chunkRange(rect);
-      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
-        const c = chunks.get(i + ',' + j);
-        if (!c) continue;
-        paintRegion(c.g, rect, true, !c.wet);
-        if (c.top) paintRegion(c.top.g, rect, false, true);
-      }
-    }
     // Draw the visible chunks (baking any missing), then bake at most one
     // neighbor ahead of time so panning into it doesn't stall.
     function drawScene(g, rect) {
@@ -2429,13 +2418,6 @@
     }
 
     function render() {
-      for (const h of heads) {
-        const state = light(h.k, h.axis);
-        if (state !== h.shown) {
-          h.shown = state;
-          rebake(h.item.rect);
-        }
-      }
       const s = view.scale;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);

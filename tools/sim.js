@@ -4,7 +4,8 @@
 //
 //   node tools/sim.js [seconds=120] [seed=random] [--quiet] [--dump=map.json]
 //
-// Exits non-zero if the roads are disconnected, traffic gridlocks, the hero
+// Exits non-zero if the roads are disconnected, traffic gridlocks (over 10% of
+// cars stopped for 10 s away from a red light), the hero
 // stalls (stopped HERO_STALL s, not parked or at a light), a district has two
 // of the same civic building or a building's entrance is blocked.
 // DIAG=1 lists stuck cars and what each waits on; DOORS=1 tallies blocked
@@ -111,6 +112,8 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
     }
   }
   const stopped = cars.filter(c => c.speed < 0.01 && !c.parked).length;
+  // Stuck: stopped over 10 s and not at a red light (waiting at one is normal).
+  const stuck = cars.filter(c => c.stuck > 10).length;
   if (process.env.DOORS) {                     // which entrances are blocked, and by what
     const tally = new Map();
     for (const [lot, by] of city.blocked) {
@@ -128,10 +131,10 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
     }
   }
   const avg = cars.reduce((t, c) => t + c.speed, 0) / cars.length;
-  const gridlock = stopped > cars.length * 0.3;
+  const gridlock = stuck > cars.length * 0.1;
   const HERO_STALL = Number(process.env.HERO_STALL || 30), stalled = worstStall > HERO_STALL;
   console.log(`  ${seconds}s: close calls ${events}, closest crossing ${minCross.toFixed(2)}, ` +
-    `${stopped} stopped, avg speed ${avg.toFixed(2)}, hero routes ${routes}, ` +
+    `${stopped} stopped (${stuck} stuck), avg speed ${avg.toFixed(2)}, hero routes ${routes}, ` +
     `step ${(total * dt / seconds).toFixed(3)} ms avg / ${worst.toFixed(2)} ms worst${gridlock ? ', GRIDLOCK' : ''}` +
     `, hero's longest stall ${worstStall.toFixed(1)} s${stalled ? ` STALLED at ${stallAt}` : ''}`);
   process.exitCode = connected && !gridlock && !stalled && !duplicates && !city.blockedDoors ? 0 : 1;
