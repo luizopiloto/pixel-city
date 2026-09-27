@@ -2580,6 +2580,14 @@
         const [hu, hv] = car.head.map(Math.abs);
         const du = hu * l + hv * w, dv = hv * l + hu * w;
         car.box = [car.pos[0] - du, car.pos[0] + du, car.pos[1] - dv, car.pos[1] + dv];
+        // Across its heading a car stays on its road tile for ordering: parked
+        // at the curb its box would otherwise reach into the block, and a
+        // building at the block's edge would be drawn over it.
+        const tu = Math.floor(car.pos[0]), tv = Math.floor(car.pos[1]);
+        if (city.isRoad(tu, tv)) {
+          if (hu >= hv) { car.box[2] = Math.max(car.box[2], tv); car.box[3] = Math.min(car.box[3], tv + 1); }
+          else { car.box[0] = Math.max(car.box[0], tu); car.box[1] = Math.min(car.box[1], tu + 1); }
+        }
         const [x, y] = iso(car.pos[0], car.pos[1]);
         if (overlap([x, y, 1, 1], inView)) visible.push(car);
       }
