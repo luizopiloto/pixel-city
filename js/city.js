@@ -1540,7 +1540,7 @@
     // Moving water, drawn every frame between a chunk's ground and its
     // sprites: waves rolling onto every shore tile (their phase drifts slowly
     // along the coast, so neighbors mostly agree) and glints on open water.
-    const WAVE_S = 3.2;
+    const WAVE_S = 3.2, ANIM_FPS = 8;
     function drawWaves(g, rect) {
       const t = clock / WAVE_S;
       forTiles(rect, (u, v) => {
@@ -1588,9 +1588,19 @@
       addStatic(() => img[b.src], x - b.base[0], y - b.base[1],
         [cu - b.a / 2, cu + b.a / 2, cv - b.b / 2, cv + b.b / 2]);
     }
+    // Animated sprites (a manifest `frames` count, frames side by side) are
+    // drawn every frame instead of baked; see render().
+    const animated = [];
     for (const [src, u, v, box] of city.props) {
-      const [ax, ay] = src.startsWith('art/') ? art[src.slice(4)].anchor : PROP_ANCHORS[src];
+      const m = src.startsWith('art/') ? art[src.slice(4)] : null;
+      const [ax, ay] = m ? m.anchor : PROP_ANCHORS[src];
       const [x, y] = iso(u, v);
+      if (m && m.frames > 1) {
+        const [a, b] = m.footprint || [0.1, 0.1], [w, h] = m.size;
+        animated.push({ src, frames: m.frames, rect: [Math.round(x - ax), Math.round(y - ay), w, h],
+          box: [u - a / 2, u + a / 2, v - b / 2, v + b / 2] });
+        continue;
+      }
       addStatic(() => img[src], x - ax, y - ay, box || pointBox(u, v));
     }
 
@@ -2274,6 +2284,21 @@
       drawScene(ctx, [view.x, view.y, view.w, view.h]);
 
       const inView = [view.x - 64, view.y - 64, view.w + 128, view.h + 128];
+      // Animated sprites (the fountains), then whatever stands in front of
+      // them redrawn over them, clipped, as for cars below.
+      for (const a of animated) {
+        if (!overlap(a.rect, inView)) continue;
+        const [x, y, w, h] = a.rect, f = Math.floor(clock * ANIM_FPS) % a.frames;
+        ctx.drawImage(img[a.src], f * w, 0, w, h, x, y, w, h);
+        const front = [...hash.query(a.rect)].filter(st => drawsBefore(a, st)).sort(byOrder);
+        if (!front.length) continue;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(...a.rect);
+        ctx.clip();
+        front.forEach(st => st.draw(ctx));
+        ctx.restore();
+      }
       const visible = [];
       for (const car of cars) {
         // Footprint box: the car's length along its heading, width across.

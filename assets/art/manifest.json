@@ -1355,11 +1355,16 @@
  "rec/fountain.png": {
   "size": [
    84,
-   54
+   59
   ],
   "anchor": [
    42,
-   33
+   38
+  ],
+  "frames": 8,
+  "footprint": [
+   0.92,
+   0.92
   ]
  },
  "nature/dune/marram-b.png": {

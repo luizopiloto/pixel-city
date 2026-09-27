@@ -1876,28 +1876,50 @@ def seesaw(seed):
     return s
 
 
-def fountain(seed):
-    """Town square fountain: round stone basin of water, a pedestal with an
-    upper bowl, and a spout of water on top."""
+def fountain(seed, p=0.0):
+    """Town square fountain at phase p in [0, 1): round stone basin of
+    water, a pedestal with an upper bowl, a bobbing spout on top, droplets
+    running down the streams from the bowl and ripples spreading out."""
     s = Sprite(130, 110, 65, 70, seed)
     stone = rgb("#c9bfae")
     ring(s, 0.46, 0, 6, lambda k: flat(s, stone * 0.95, 5), n=24)
     disk(s, 0.46, 6, flat(s, stone * 1.08, 4), n=24)
     water = ramp("#2f8191", "#3e92a2", "#5aa8b4")
+    foam = rgb("#b8dce0")
 
-    def pool(a, b, xs, ys):
-        return np.array(water)[(xs // 3 + ys) % 3] + (s.grain[ys, xs] - 0.5)[:, None] * 6
-    disk(s, 0.4, 6.5, pool, n=24)
+    def pool(z, radius, speed):
+        cx, cy = s.proj(0, 0, z)
+
+        def shader(a, b, xs, ys):
+            out = np.array(water)[(xs // 3 + ys + int(p * 6)) % 3] + (s.grain[ys, xs] - 0.5)[:, None] * 6
+            r = np.hypot(xs + 0.5 - cx, (ys + 0.5 - cy) * 2) / radius        # 0 at the middle, 1 at the rim
+            ripple = (np.mod(r - p * speed, 0.5) < 0.045) & (r > 0.3) & (r < 0.95)
+            return np.where(ripple[:, None], out * 0.55 + foam * 0.45, out)
+        return shader
+    disk(s, 0.4, 6.5, pool(6.5, 0.4 * 90.5, 0.5), n=24)
     ring(s, 0.06, 6, 16, lambda k: flat(s, stone, 4), n=10)
     ring(s, 0.18, 22, 3, lambda k: flat(s, stone * 0.92, 4), n=16)
     disk(s, 0.18, 25, flat(s, stone * 1.1, 4), n=16)
-    disk(s, 0.14, 25.5, pool, n=16)
-    s.blob((0, 0, 30), 2.2, ramp("#8ec4cc", "#b8dce0", "#e0f0f0"), squash=1.4)
+    disk(s, 0.14, 25.5, pool(25.5, 0.14 * 90.5, 0.5), n=16)
+    bob = math.sin(2 * math.pi * p)
+    top = 34 + 1.5 * bob                                        # jet up from the bowl, crowned with spray
+    base, crown = s.proj(0, 0, 26), s.proj(0, 0, top)
+    for dx in (-0.5, 0.5):
+        s.line((base[0] + dx, base[1]), (crown[0] + dx, crown[1]), foam, 0.3)
+    s.blob((0, 0, top), 2.0 + 0.3 * bob, ramp("#8ec4cc", "#b8dce0", "#e0f0f0"), squash=1.2)
+    rng = np.random.default_rng(seed + int(p * 8))
+    for _ in range(4):
+        a = rng.uniform(0, 2 * math.pi)
+        x, y = s.proj(0.05 * math.cos(a), 0.05 * math.sin(a), top - rng.uniform(1, 5))
+        s.line((x, y), (x, y), rgb("#e8f4f4"), 0.31)
     for k in range(6):                                          # water falling from the bowl
         t = 2 * math.pi * k / 6
         x0, y0 = 0.17 * math.cos(t), 0.17 * math.sin(t)
         top, bot = s.proj(x0, y0, 24), s.proj(x0 * 1.3, y0 * 1.3, 7)
-        s.line(top, bot, rgb("#b8dce0"), x0 + y0 + 0.2)
+        s.line(top, bot, foam, x0 + y0 + 0.2)
+        for q in ((p + k * 0.37) % 1, (p + k * 0.37 + 0.5) % 1):   # droplets running down
+            x, y = top[0] + (bot[0] - top[0]) * q, top[1] + (bot[1] - top[1]) * q
+            s.line((x, y), (x, y + 1), rgb("#e8f4f4"), x0 + y0 + 0.21)
     s.outline(0.75)
     return s
 
@@ -1934,6 +1956,24 @@ def save(sprite, rel, mirror=False, **meta):
     img = img.crop(bbox)
     img.save(path)
     MANIFEST[rel] = {"size": list(img.size), "anchor": [round(ox - bbox[0], 1), round(sprite.oy - bbox[1], 1)], **meta}
+
+
+def save_anim(frames, rel, **meta):
+    """Frames of one sprite (same origin) cropped to their joint bounds and
+    saved side by side; the manifest gives the frame size and count."""
+    path = OUT / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    imgs = [f.image() for f in frames]
+    boxes = [im.getbbox() for im in imgs]
+    x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+    x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+    w, h = x1 - x0, y1 - y0
+    atlas = Image.new("RGBA", (w * len(imgs), h))
+    for k, im in enumerate(imgs):
+        atlas.paste(im.crop((x0, y0, x1, y1)), (k * w, 0))
+    atlas.save(path)
+    MANIFEST[rel] = {"size": [w, h], "anchor": [round(frames[0].ox - x0, 1), round(frames[0].oy - y0, 1)],
+                     "frames": len(imgs), **meta}
 
 
 def save_tile(img, rel):
@@ -2014,7 +2054,7 @@ def main():
     save(swing_set(152), "rec/swing-set.png")
     save(slide(153), "rec/slide.png")
     save(seesaw(154), "rec/seesaw.png")
-    save(fountain(155), "rec/fountain.png")
+    save_anim([fountain(155, k / 8) for k in range(8)], "rec/fountain.png", footprint=[0.92, 0.92])
     save(marram(131), "nature/dune/marram-b.png")
     save(creeper(132, "#c77aa0"), "nature/dune/morning-glory.png")
     save(creeper(133, "#d8c060", spread=0.14), "nature/dune/sea-daisy.png")
