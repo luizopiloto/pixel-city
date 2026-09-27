@@ -586,10 +586,10 @@
   }
 
   // Soil edge under the two camera-facing sides of the island.
-  function drawSlab(ctx) {
+  function drawSlab(ctx, xMin = -Infinity, xMax = Infinity) {
     const [lx, ly] = iso(0, N), [bx, by] = iso(N, N), [rx] = iso(N, 0);
     const side = (x0, x1, y0, slope, fill, lip) => {
-      for (let x = x0; x < x1; x++) {
+      for (let x = Math.max(x0, Math.floor(xMin)); x < Math.min(x1, Math.ceil(xMax)); x++) {
         const y = Math.round(y0 + (x - x0) * slope);
         ctx.fillStyle = lip;
         ctx.fillRect(x, y, 1, 2);
@@ -815,29 +815,25 @@
     }
     let tiltFocus = -1;
 
-    const layer = paint => {
-      const c = document.createElement('canvas');
-      c.width = W;
-      c.height = H;
-      const g = c.getContext('2d');
-      g.imageSmoothingEnabled = false;
-      paint(g);
-      return c;
-    };
-
-    // Ground, painted back to front.
-    const groundLayer = layer(g => {
-      drawSlab(g);
-      for (let d = 0; d < 2 * N - 1; d++) {
-        for (let u = 0; u < N; u++) {
+    // Ground tiles whose diamond overlaps a screen rect, back to front.
+    function drawGround(g, [x, y, w, h]) {
+      drawSlab(g, x, x + w);
+      const uv = (px, py) => [((px - OX) / HW + (py - TOP) / HH) / 2, ((py - TOP) / HH - (px - OX) / HW) / 2];
+      const pts = [uv(x, y), uv(x + w, y), uv(x, y + h), uv(x + w, y + h)];
+      const u0 = Math.max(0, Math.floor(Math.min(...pts.map(p => p[0]))) - 1);
+      const u1 = Math.min(N - 1, Math.ceil(Math.max(...pts.map(p => p[0]))) + 1);
+      const v0 = Math.max(0, Math.floor(Math.min(...pts.map(p => p[1]))) - 1);
+      const v1 = Math.min(N - 1, Math.ceil(Math.max(...pts.map(p => p[1]))) + 1);
+      for (let d = u0 + v0; d <= u1 + v1; d++) {
+        for (let u = Math.max(u0, d - v1); u <= Math.min(u1, d - v0); u++) {
           const v = d - u;
-          if (v < 0 || v >= N) continue;
+          const [tx, ty] = iso(u, v);
+          if (tx + HW + 1 < x || tx - HW - 1 > x + w || ty + TH + 1 < y || ty > y + h) continue;
           const [name, mode] = city.ground(u, v);
-          const src = `tiles/${name}.png`;
-          drawTile(g, img[src], u, v, mode);
+          drawTile(g, img[`tiles/${name}.png`], u, v, mode);
         }
       }
-    });
+    }
 
     await phase('ground');
 
@@ -891,23 +887,70 @@
     paintOrder(statics, a => hash.query(a.rect), drawsBefore).forEach((it, i) => { it.order = i; });
     await phase('statics');
 
-    // Ground and static sprites, baked once; a region is re-baked when a
-    // traffic light changes.
-    const sceneLayer = layer(g => {
-      g.drawImage(groundLayer, 0, 0);
-      [...statics].sort(byOrder).forEach(s => s.draw(g));
-    });
-    const sceneCtx = sceneLayer.getContext('2d');
-    sceneCtx.imageSmoothingEnabled = false;
+    // The baked scene (ground + static sprites) lives in CHUNK_W × CHUNK_H
+    // chunks, drawn when first needed and kept in a small LRU cache; a traffic
+    // light change repaints just its rect in the chunks already drawn.
+    const CHUNK_W = 1024, CHUNK_H = 512, CHUNK_CAP = 24;
+    const chunks = new Map();
+    let chunkTick = 0;
+    function paintRegion(g, rect) {
+      g.save();
+      g.beginPath();
+      g.rect(...rect);
+      g.clip();
+      g.clearRect(...rect);
+      drawGround(g, rect);
+      [...hash.query(rect)].sort(byOrder).forEach(st => st.draw(g));
+      g.restore();
+    }
+    function chunk(i, j) {
+      const key = i + ',' + j;
+      let c = chunks.get(key);
+      if (!c) {
+        const cv = document.createElement('canvas');
+        cv.width = CHUNK_W;
+        cv.height = CHUNK_H;
+        const g = cv.getContext('2d');
+        g.imageSmoothingEnabled = false;
+        g.translate(-i * CHUNK_W, -j * CHUNK_H);
+        const t0 = performance.now();
+        paintRegion(g, [i * CHUNK_W, j * CHUNK_H, CHUNK_W, CHUNK_H]);
+        c = { canvas: cv, g, i, j };
+        chunks.set(key, c);
+        if (debug) console.log(`pixel-city: chunk ${key} ${(performance.now() - t0).toFixed(1)} ms, ${chunks.size} cached`);
+        if (chunks.size > CHUNK_CAP) {                     // drop the least recently used
+          let old = null;
+          for (const o of chunks.values()) if (o !== c && (!old || o.used < old.used)) old = o;
+          chunks.delete(old.i + ',' + old.j);
+        }
+      }
+      c.used = chunkTick;
+      return c;
+    }
+    const chunkRange = ([x, y, w, h]) => [
+      Math.floor(x / CHUNK_W), Math.floor((x + w - 1) / CHUNK_W),
+      Math.floor(y / CHUNK_H), Math.floor((y + h - 1) / CHUNK_H)];
     function rebake(rect) {
-      sceneCtx.save();
-      sceneCtx.beginPath();
-      sceneCtx.rect(...rect);
-      sceneCtx.clip();
-      sceneCtx.clearRect(...rect);
-      sceneCtx.drawImage(groundLayer, 0, 0);
-      [...hash.query(rect)].sort(byOrder).forEach(s => s.draw(sceneCtx));
-      sceneCtx.restore();
+      const [i0, i1, j0, j1] = chunkRange(rect);
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+        const c = chunks.get(i + ',' + j);
+        if (c) paintRegion(c.g, rect);
+      }
+    }
+    // Draw the visible chunks (baking any missing), then bake at most one
+    // neighbor ahead of time so panning into it doesn't stall.
+    function drawScene(g, rect) {
+      chunkTick++;
+      const [i0, i1, j0, j1] = chunkRange(rect);
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+        g.drawImage(chunk(i, j).canvas, i * CHUNK_W, j * CHUNK_H);
+      }
+      for (let i = i0 - 1; i <= i1 + 1; i++) for (let j = j0 - 1; j <= j1 + 1; j++) {
+        if (!chunks.has(i + ',' + j) && i >= 0 && j >= 0 && i * CHUNK_W < W && j * CHUNK_H < H) {
+          chunk(i, j);
+          return;
+        }
+      }
     }
 
     // Cars: the hero drives planned routes; the others loop.
@@ -1391,7 +1434,7 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(s, 0, 0, s, -view.x * s, -view.y * s);
-      ctx.drawImage(sceneLayer, 0, 0);
+      drawScene(ctx, [view.x, view.y, view.w, view.h]);
 
       const inView = [view.x - 64, view.y - 64, view.w + 128, view.h + 128];
       const visible = [];
