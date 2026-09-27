@@ -1852,6 +1852,60 @@ def creeper(seed, flower="#c77aa0", spread=0.2):
     return s
 
 
+# ---------- parking lot ----------
+
+ASPHALT = dict(base="#4a494d", dark="#444347", light="#504f53")
+
+
+def lot_tile(seed, lines=None):
+    """Asphalt, with white stall lines every half tile across the given
+    axis: lines="u" draws lines parallel to u (stalls side by side along
+    v), "v" lines parallel to v."""
+    col = np.array(ground(**ASPHALT, seed=seed))[..., :3].astype(float)
+    if lines:
+        u, v = uv_of_tile()
+        t = v if lines == "u" else u
+        paint = np.abs(np.mod(t * 2 + 0.5, 1) - 0.5) < 0.035
+        col[paint] = rgb("#bdb7a8") + (np.random.default_rng(seed).random((paint.sum(), 1)) - 0.5) * 10
+    return tile_image(col)
+
+
+def fence(seed, rot=0):
+    """Low metal railing along u, 1 tile long (turned by rot): posts and
+    two rails."""
+    s = Sprite(110, 60, 20, 40, seed)
+    s.rot = rot
+    if rot % 2:
+        s.ox = s.w - 20
+    metal = [flat(s, c, 3) for c in ("#8e8897", "#716f74", "#5b5a5c")]
+    for k in range(5):
+        s.box(k * 0.24, 0, 0, 0.03, 0.03, 11, *metal)
+    for z in (4, 9):
+        s.box(0, 0, z, 1.0, 0.02, 1.6, *metal)
+    s.outline(0.8)
+    return s
+
+
+def gate(seed, arm=1, lift=0.0):
+    """Parking boom barrier: a control box at the origin and a striped arm
+    along u (+u for arm=1, -u for arm=-1), raised by `lift` in [0, 1]."""
+    s = Sprite(110, 110, 55, 70, seed)
+    s.box(-0.05, -0.05, 0, 0.1, 0.1, 13, flat(s, "#c9a84a"), flat(s, "#5b5a5c"), flat(s, "#4a494b"))
+    s.box(-0.05, -0.05, 13, 0.1, 0.1, 2, flat(s, "#2e3336"), flat(s, "#2e3336"), flat(s, "#2e3336"))
+    a = lift * math.radians(84)
+    L = 0.44
+    e1 = (arm * L * math.cos(a), 0, L * math.sin(a) * 71.6)
+
+    def stripes(aa, bb, xs, ys):
+        band = np.floor(aa * 6) % 2 == 0
+        return np.where(band[:, None], rgb("#8a3a32"), rgb("#ddd6c8")) + (s.grain[ys, xs] - 0.5)[:, None] * 4
+    pivot = (arm * 0.03, -0.012, 11)
+    s.face(pivot, e1, (0, 0.024, 0), stripes, light=LIGHT["top"])
+    s.face((pivot[0], pivot[1] + 0.024, pivot[2]), e1, (0, 0, -2.5), stripes, light=LIGHT["v"])
+    s.outline(0.8)
+    return s
+
+
 # ---------- recreation ----------
 
 REC_WOOD = ("#8a6751", "#765743", "#5f4646")
@@ -2121,6 +2175,14 @@ def main():
         save(towel(106, "#8f6f9a", rot=k), f"beach/towel-purple{turn(k)}.png")
         save(towel(107, "#3f6f73", rot=k), f"beach/towel-teal{turn(k)}.png")
     save(marram(130), "nature/dune/marram.png")
+    # Parking lot: asphalt with stall lines, the fence, animated gates.
+    save_tile(lot_tile(160), "ground/lot.png")
+    save_tile(lot_tile(161, "u"), "ground/lot-lines-u.png")
+    save_tile(lot_tile(162, "v"), "ground/lot-lines-v.png")
+    save(fence(163), "parking/fence.png")
+    save(fence(163, rot=1), "parking/fence-r1.png")
+    save_anim([gate(164, 1, k / 7) for k in range(8)], "parking/gate-l.png", footprint=[0.1, 0.1])
+    save_anim([gate(165, -1, k / 7) for k in range(8)], "parking/gate-r.png", footprint=[0.1, 0.1])
     # Recreation: suburb BBQ areas and playgrounds, downtown squares.
     save(picnic_table(150), "rec/picnic-table.png")
     save(barbecue(151), "rec/barbecue.png")

@@ -89,7 +89,7 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
     const parked = hero.parked > 0;
     if (parked && !wasParked) routes++;
     wasParked = parked;
-    if (hero.speed < 0.01 && !parked && !hero.atLight) {
+    if (hero.speed < 0.01 && !parked && !hero.atLight && !(hero.hold > 0)) {
       stall += dt;
       if (stall > worstStall) {
         worstStall = stall;

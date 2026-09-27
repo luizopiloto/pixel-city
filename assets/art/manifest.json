@@ -1412,6 +1412,77 @@
    11
   ]
  },
+ "ground/lot.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/lot-lines-u.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/lot-lines-v.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "parking/fence.png": {
+  "size": [
+   62,
+   31
+  ],
+  "anchor": [
+   2,
+   11
+  ]
+ },
+ "parking/fence-r1.png": {
+  "size": [
+   65,
+   32
+  ],
+  "anchor": [
+   65,
+   12
+  ]
+ },
+ "parking/gate-l.png": {
+  "size": [
+   37,
+   47
+  ],
+  "anchor": [
+   6,
+   40
+  ],
+  "frames": 8,
+  "footprint": [
+   0.1,
+   0.1
+  ]
+ },
+ "parking/gate-r.png": {
+  "size": [
+   37,
+   50
+  ],
+  "anchor": [
+   31,
+   47
+  ],
+  "frames": 8,
+  "footprint": [
+   0.1,
+   0.1
+  ]
+ },
  "rec/picnic-table.png": {
   "size": [
    59,

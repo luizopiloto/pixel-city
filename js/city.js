@@ -336,6 +336,7 @@
       }
     }
     merge(SUPER_COUNT, [[3, 2], [2, 3]], true);
+    merge(1, [[1, 2], [2, 1]], true, 'downtown', -1, 'parking');
     merge(DOWNTOWN_SQUARES[0] + Math.floor(rng() * (DOWNTOWN_SQUARES[1] - DOWNTOWN_SQUARES[0] + 1)), [[2, 2]], true,
       'downtown', -1, 'square');
     const typed = (t, d = -1) => [...cells.values()].filter(c => c.type === t && (d < 0 || c.district === d)).length;
@@ -529,6 +530,62 @@
       }
     }
 
+    // Parking lot (a 1×2 or 2×1 downtown block): stalls either side of an
+    // aisle, a low fence all round and, on the +v street, a two-lane
+    // entrance with a boom gate per lane. Some stalls hold parked cars; the
+    // hero starts in one, and `lead` is its way out: along the aisle, out
+    // through the exit lane, right onto the street (to -u).
+    let parking = null;
+    function parkingLot(sb) {
+      const { u0, u1, v0, v1 } = sb, alongV = sb.bh > sb.bw, eu = u0 + 1;      // eu: the entrance column
+      for (let u = u0; u < u1; u++) for (let v = v0; v < v1; v++) {
+        const lane = alongV ? u === eu : v === v0 + 1 || (u === eu && v === v0 + 2);
+        setGround(u, v, lane ? 'art/ground/lot' : alongV ? 'art/ground/lot-lines-u' : 'art/ground/lot-lines-v');
+      }
+      const stalls = [];                            // { u, v, toAisle }
+      if (alongV) {
+        for (let k = 0; k < (v1 - v0) * 2; k++) {
+          const v = v0 + k * 0.5 + 0.25;
+          stalls.push({ u: u0 + 0.5, v, toAisle: [1, 0] }, { u: u0 + 2.5, v, toAisle: [-1, 0] });
+        }
+      } else {
+        for (let k = 0; k < (u1 - u0) * 2; k++) {
+          const u = u0 + k * 0.5 + 0.25;
+          stalls.push({ u, v: v0 + 0.5, toAisle: [0, 1] });
+          if (u < eu || u > eu + 1) stalls.push({ u, v: v0 + 2.5, toAisle: [0, -1] });   // not the driveway
+        }
+      }
+      const hs = alongV ? stalls.find(t => t.u === u0 + 0.5 && t.v === v0 + 0.75)
+        : stalls.find(t => t.v === v0 + 0.5 && t.u === u0 + 4.25);
+      const cars = [];
+      for (const t of stalls) {
+        if (t === hs || rng() > 0.45) continue;
+        const flip = rng() < 0.35 ? -1 : 1;           // most park nose to the aisle
+        cars.push({ u: t.u, v: t.v, head: [t.toAisle[0] * flip, t.toAisle[1] * flip], type: pick(TYPES) });
+      }
+      const lead = [];
+      if (alongV) {
+        lead.push([hs.u - 0.1, hs.v]);
+        fillet(lead, [eu + 0.5, hs.v - LANE], [1, 0], [0, 1]);                // into the aisle
+      } else {
+        lead.push([hs.u, hs.v - 0.1]);
+        fillet(lead, [hs.u + LANE, v0 + 1.5], [0, 1], [-1, 0]);               // into the aisle
+        fillet(lead, [eu + 0.5, v0 + 1.5], [-1, 0], [0, 1]);                  // into the driveway
+      }
+      fillet(lead, [eu + 0.5, v1 + 0.5], [0, 1], [-1, 0]);                    // out, right onto the street
+      // Fence round the edge, open at the entrance; a gate on each lane.
+      for (let u = u0; u < u1; u++) {
+        props.push(['art/parking/fence.png', u, v0 + 0.02, [u, u + 1, v0 + 0.02, v0 + 0.05]]);
+        if (u !== eu) props.push(['art/parking/fence.png', u, v1 - 0.06, [u, u + 1, v1 - 0.06, v1 - 0.03]]);
+      }
+      for (let v = v0; v < v1; v++) {
+        props.push(['art/parking/fence-r1.png', u0 + 0.05, v, [u0 + 0.02, u0 + 0.05, v, v + 1]]);
+        props.push(['art/parking/fence-r1.png', u1 - 0.01, v, [u1 - 0.04, u1 - 0.01, v, v + 1]]);
+      }
+      props.push(['art/parking/gate-l.png', eu + 0.06, v1 - 0.1], ['art/parking/gate-r.png', eu + 0.94, v1 - 0.1]);
+      parking = { cars, lead, behind: [sb.bi + 1, sb.bj + sb.bh], ahead: [sb.bi, sb.bj + sb.bh] };
+    }
+
     // Town square (2×2 downtown): a row of buildings along its back edge
     // facing in and one along its street edge, around a grass square with a
     // fountain, corner trees, benches, lamps and flower beds.
@@ -564,7 +621,8 @@
       prop('lamp-white.png', cu + 2.3, cv);
     }
 
-    supers.filter(sb => sb.type === 'downtown').forEach(sb => (sb.kind === 'square' ? townSquare : downtown)(sb));
+    supers.filter(sb => sb.type === 'downtown')
+      .forEach(sb => (sb.kind === 'square' ? townSquare : sb.kind === 'parking' ? parkingLot : downtown)(sb));
 
     // Art sprites (assets/art, see tools/art.py) stand at their footprint
     // center: lots as ['art:<name>', u0, u1, v0, v1, district], props as
@@ -907,7 +965,7 @@
       const turned = (name, k) => (k ? name.replace('.png', `-r${k}.png`) : name);
       // Which way the water is from a beach point, and which way open sea is
       // from a sea tile: [du, dv] toward the neighbor nearest the sea / the
-      // deepest neighbor. TURN maps a direction to the turn (0-3) that points
+      // deepest neighbor. `turnToward` maps a direction to the turn (0-3) that points
       // a sprite drawn toward +u that way (each turn: +u -> +v -> -u -> -v).
       const seaward = (pu, pv) => {             // by how the sea distance slopes, over 2 tiles each way
         const u = Math.floor(pu), v = Math.floor(pv);
@@ -930,7 +988,7 @@
         }
         return best;
       };
-      const TURN = ([a, b]) => (a > 0 ? 0 : b > 0 ? 1 : a < 0 ? 2 : 3);
+      const turnToward = ([a, b]) => (a > 0 ? 0 : b > 0 ? 1 : a < 0 ? 2 : 3);
       // The lighthouse: on the front shore tile lowest on screen.
       const tip = sand.filter(t => t[2] > 0.5 && shoreline(t)).sort((a, b) => b[0] + b[1] - a[0] - a[1])[0];
       if (tip) {
@@ -994,11 +1052,11 @@
           beachProp(pick(['beach/umbrella-red.png', 'beach/umbrella-teal.png', 'beach/umbrella-gold.png']), au, av);
           // Loungers put their feet toward the water, towels lie toward it.
           const seat = pick(['beach/lounger-teal.png', 'beach/lounger-red.png', 'beach/towel-purple.png', 'beach/towel-teal.png']);
-          const su = au + 0.28 + rng() * 0.12, sv = av + 0.22 + rng() * 0.12, k = TURN(seaward(su, sv));
+          const su = au + 0.28 + rng() * 0.12, sv = av + 0.22 + rng() * 0.12, k = turnToward(seaward(su, sv));
           beachProp(turned(seat, seat.includes('towel') ? k % 2 : k), su, sv);
           take(u, v);
         } else if (d > 1 && r < 0.14 + 0.28 * f) {           // just a towel
-          beachProp(turned(pick(['beach/towel-purple.png', 'beach/towel-teal.png']), TURN(seaward(cu, cv)) % 2), cu, cv);
+          beachProp(turned(pick(['beach/towel-purple.png', 'beach/towel-teal.png']), turnToward(seaward(cu, cv)) % 2), cu, cv);
           take(u, v);
         }
       }
@@ -1018,7 +1076,7 @@
         if (f < 0.5 || taken.has(k)) continue;
         if (d === 3 && rng() < 0.22) beachProp('beach/buoy.png', u + 0.5, v + 0.5);
         else if (d >= 4 && d <= 6 && boats < LOOSE_BOATS && rng() < 0.0025) {
-          beachProp(turned('beach/rowboat.png', TURN(offshore(u, v)) % 2 + 2 * (rng() < 0.5)), u + 0.5, v + 0.5);
+          beachProp(turned('beach/rowboat.png', turnToward(offshore(u, v)) % 2 + 2 * (rng() < 0.5)), u + 0.5, v + 0.5);
           take(u, v, 2);
           boats++;
         }
@@ -1087,7 +1145,7 @@
 
     const toTiles = r => r.map(([i, j]) => [roadAt(i), roadAt(j)]);
     return {
-      ground, isRoad, isLand, isWater, lighthouse, junction, lots, props, signals, signalAt, rng, pick,
+      ground, isRoad, isLand, isWater, lighthouse, parking, junction, lots, props, signals, signalAt, rng, pick,
       routes: routes.map(toTiles), NU: nu, NV: nv, IU, IV, cells: cells.size,
       districts: districts.map(d => d.type), blockedDoors, blocked,
       cellList: [...cells.values()].map(c => [c.i, c.j, c.type, c.sup >= 0]),
@@ -1127,9 +1185,10 @@
     return out;
   }
 
-  // Hero route: pulls out from the curb at `start`, follows the right-hand
-  // lane through `corners`, and pulls in to the curb at `end`.
-  function routeLane(start, corners, end) {
+  // Hero route: pulls out from the curb at `start` (or follows `lead`, a
+  // way out ending in the lane at `start`), follows the right-hand lane
+  // through `corners`, and pulls in to the curb at `end`.
+  function routeLane(start, corners, end, lead = null) {
     const pts = centers([start, ...corners, end]), n = pts.length, out = [];
     const dirs = pts.slice(0, -1).map((p, i) => unit(p, pts[i + 1]));
     const at = (p, d, side, along) => {
@@ -1138,7 +1197,8 @@
     };
     const ease = t => t * t * (3 - 2 * t);
     const K = 8;
-    for (let k = 0; k <= K; k++) out.push(at(pts[0], dirs[0], CURB + (LANE - CURB) * ease(k / K), PULL * k / K));
+    if (lead) out.push(...lead);
+    else for (let k = 0; k <= K; k++) out.push(at(pts[0], dirs[0], CURB + (LANE - CURB) * ease(k / K), PULL * k / K));
     for (let i = 1; i < n - 1; i++) fillet(out, pts[i], dirs[i - 1], dirs[i]);
     const dl = dirs[n - 2];
     for (let k = 0; k <= K; k++) out.push(at(pts[n - 1], dl, LANE + (CURB - LANE) * ease(k / K), -PULL * (1 - k / K)));
@@ -1482,7 +1542,8 @@
       const a = pts[k], b = pts[k + 2];
       return !((a[0] === p[0] && p[0] === b[0]) || (a[1] === p[1] && p[1] === b[1]));
     });
-    return { path: buildPath(routeLane(from.tile, corners, end.tile), city.signalAt, city.ground, HERO_HALF, false, city.junction), end };
+    return { path: buildPath(routeLane(from.tile, corners, end.tile, from.lead), city.signalAt, city.ground, HERO_HALF, false,
+      city.junction), end };
   }
   const firstSpot = (() => {
     for (let tries = 0; tries < 500; tries++) {
@@ -1491,7 +1552,10 @@
       if (edgeOk(a, b)) return spotOn(a, b);
     }
   })();
-    return { planRoute, firstSpot };
+    // The first route leaves the parking lot, if the city has one.
+    const start = city.parking && edgeOk(city.parking.behind, city.parking.ahead)
+      ? { ...spotOn(city.parking.behind, city.parking.ahead), lead: city.parking.lead } : firstSpot;
+    return { planRoute, firstSpot: start };
   }
 
   async function mount(root) {
@@ -1632,18 +1696,39 @@
     }
     // Animated sprites (a manifest `frames` count, frames side by side) are
     // drawn every frame instead of baked; see render().
-    const animated = [];
+    const animated = [], gates = [];
     for (const [src, u, v, box] of city.props) {
       const m = src.startsWith('art/') ? art[src.slice(4)] : null;
       const [ax, ay] = m ? m.anchor : PROP_ANCHORS[src];
       const [x, y] = iso(u, v);
       if (m && m.frames > 1) {
         const [a, b] = m.footprint || [0.1, 0.1], [w, h] = m.size;
-        animated.push({ src, frames: m.frames, rect: [Math.round(x - ax), Math.round(y - ay), w, h],
-          box: [u - a / 2, u + a / 2, v - b / 2, v + b / 2] });
+        const item = { src, frames: m.frames, rect: [Math.round(x - ax), Math.round(y - ay), w, h],
+          box: [u - a / 2, u + a / 2, v - b / 2, v + b / 2] };
+        if (src.includes('parking/gate')) {            // raised as the hero comes near: open 0..1
+          Object.assign(item, { pos: [u, v], open: 0 });
+          item.frameOf = () => Math.round(item.open * (item.frames - 1));
+          gates.push(item);
+        }
+        animated.push(item);
         continue;
       }
       addStatic(() => img[src], x - ax, y - ay, box || pointBox(u, v));
+    }
+    // Cars parked in the lot: the car sprite's first wheel frame, baked.
+    for (const pc of city.parking ? city.parking.cars : []) {
+      const f = frameFor(pc.head[0], pc.head[1]), [x, y] = iso(pc.u, pc.v);
+      const px = Math.round(x), py = Math.round(y), [cw, ch] = CAR_CELL;
+      const rx = px - CAR_PIVOT[0], ry = py - CAR_PIVOT[1];
+      const [hu, hv] = pc.head.map(Math.abs);
+      const du = hu * CAR_HALF + hv * CAR_HALF_W, dv = hv * CAR_HALF + hu * CAR_HALF_W;
+      statics.push({ box: [pc.u - du, pc.u + du, pc.v - dv, pc.v + dv], rect: [rx, ry, cw, ch + 4], draw: c => {
+        c.fillStyle = 'rgba(20, 22, 30, .28)';
+        c.fillRect(px - 13, py - 1, 26, 3);
+        c.fillRect(px - 9, py - 3, 18, 7);
+        c.drawImage(img[`vehicles/${pc.type}/iso.png`], f * cw, 0, cw, ch, rx, ry, cw, ch);
+        c.drawImage(img[`vehicles/${pc.type}/wheels.png`], f * cw, 0, cw, ch, rx, ry, cw, ch);
+      } });
     }
 
     // Signal heads: one per axis, on the two camera-facing corners.
@@ -1766,7 +1851,9 @@
     const heroPath = heroRoute.path;
 
     const bumpState = () => ({ bumps: [], nextBump: Math.random() * BUMP_EVERY[1] });
+    // Starting in the parking lot, the hero waits a moment in its stall.
     const hero = { id: 0, type: HERO_TYPE, path: heroPath, s: 0, speed: 0, roll: 0, ...bumpState(), parked: 0,
+      hold: firstSpot.lead ? PARK_S + 3 : 0,
       pos: heroPath.samples[0], head: heroPath.heads[0], box: null, hero: true };
     const cars = [hero];
     for (const path of city.routes.map(r => buildPath(loopLane(r), city.signalAt, city.ground, CAR_HALF, true, city.junction))) {
@@ -1989,8 +2076,13 @@
       return lead - GAP < dOut + halfL(car) ? [dIn - halfL(car) - 0.05, who] : [Infinity, null];
     }
 
+    const GATE_S = 0.7;                               // s for a gate arm to swing up or down
     function step(dt) {
       clock += dt;
+      for (const g of gates) {
+        const near = Math.hypot(hero.pos[0] - g.pos[0], hero.pos[1] - g.pos[1]) < 1.6;
+        g.open = Math.min(1, Math.max(0, g.open + (near ? dt : -dt) / GATE_S));
+      }
       buckets = new Map();
       for (const car of cars) {
         const k = bucketKey(car.pos[0], car.pos[1]);
@@ -2032,6 +2124,7 @@
         }
         car.atLight = atLight;
         if (!car.path.closed) gap = Math.min(gap, car.path.total - car.path.step - car.s);
+        if (car.hold > 0) { car.hold -= dt; gap = 0; }
         const target = Math.min(CRUISE, Math.sqrt(2 * DECEL * Math.max(0, gap)));
         car.speed = target > car.speed
           ? Math.min(target, car.speed + ACCEL * dt)
@@ -2334,7 +2427,7 @@
       // them redrawn over them, clipped, as for cars below.
       for (const a of animated) {
         if (!overlap(a.rect, inView)) continue;
-        const [x, y, w, h] = a.rect, f = Math.floor(clock * ANIM_FPS) % a.frames;
+        const [x, y, w, h] = a.rect, f = a.frameOf ? a.frameOf() : Math.floor(clock * ANIM_FPS) % a.frames;
         ctx.drawImage(img[a.src], f * w, 0, w, h, x, y, w, h);
         const front = [...hash.query(a.rect)].filter(st => drawsBefore(a, st)).sort(byOrder);
         if (!front.length) continue;
