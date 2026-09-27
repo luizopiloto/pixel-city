@@ -589,20 +589,24 @@
     // tower in the middle of a paved plaza with a lawn ring, trees at the
     // corners, benches and lamps.
     let tvLed = null;                              // where the TV station's LED panels go
+    // TV station (one 2×2 downtown block): the studio podium fills most of
+    // the block, the tower on its roof; wide paved sidewalks round it with
+    // trees, benches, lamps and bins.
     function tvStation({ u0, u1, v0, v1 }) {
       const cu = (u0 + u1) / 2, cv = (v0 + v1) / 2;
       pave(u0, v0, u1 - u0, v1 - v0);
-      for (let u = u0 + 1; u < u1 - 1; u++) for (let v = v0 + 1; v < v1 - 1; v++) {
-        if (Math.max(Math.abs(u + 0.5 - cu), Math.abs(v + 0.5 - cv)) > 1.6) setGround(u, v, pick(GRASSES));
-      }
       artLot('landmarks/tv-station.png', cu, cv);
       tvLed = [cu, cv];
-      for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) artProp(pick(CITY_TREES), cu + a * 2.6, cv + b * 2.6);
-      for (const d of [-1, 1]) {
-        prop('props/bench-nw.png', cu + d * 2.3, cv + 0.6);
-        prop('props/bench-ne.png', cu - 0.6, cv + d * 2.3);
-        prop('lamp-white.png', cu + d * 1.5, cv + 2.9);
+      const edge = 0.45;                            // along the sidewalks, clear of the podium
+      for (const t of [0.9, 2.3, 4.7, 6.1]) {
+        artProp(pick(CITY_TREES), u0 + t, v1 - edge);
+        artProp(pick(CITY_TREES), u1 - edge, v0 + t);
       }
+      prop('props/bench-ne.png', u0 + 1.6, v1 - edge);
+      prop('props/bench-ne.png', u0 + 5.4, v1 - edge);
+      prop('lamp-white.png', u0 + 3.5 - 0.9, v1 - edge);
+      prop('lamp-white.png', u0 + 3.5 + 0.9, v1 - edge);
+      artProp('street/bin-recycle.png', u0 + 3.0, v1 - 0.3);
     }
 
     // Town square (2×2 downtown): a row of buildings along its back edge
@@ -1157,7 +1161,7 @@
     // outside the footprint, free of props; count buildings that
     // intrude on another's entrance (tools/sim.js fails on any).
     const EXTRA = {                                  // sprite ground beyond the footprint: [-u, +u, -v, +v]
-      'buildings/brick-4.png': [0, 0, 0, CANOPY], 'buildings/hotel.png': [0, 0, 0, CANOPY], 'houses/diner.png': [0, 0.18, 0, 0],
+      'buildings/brick-4.png': [0, 0, 0, CANOPY], 'buildings/hotel.png': [0, 0, 0, CANOPY], 'landmarks/tv-station.png': [0, 0, 0, 0.36], 'houses/diner.png': [0, 0.18, 0, 0],
       'buildings/fastfood.png': [0, 0.34, 0, 0], 'buildings/apartment-2.png': [0, 0.22, 0, 0.3],
       'civic/church.png': [0.04, 0.04, 0, 0.36], 'civic/bank.png': [0, 0, 0, 0.36],
     };
@@ -1190,7 +1194,7 @@
     }
     const blockedDoors = blocked.length;
     // Drawn over the TV station, just in front of it in paint order.
-    if (tvLed) props.push(['art/landmarks/tv-led.png', tvLed[0], tvLed[1],
+    if (tvLed) for (const n of ['side', 'front']) props.push([`art/landmarks/tv-ads-${n}.png`, tvLed[0], tvLed[1],
       [tvLed[0] + 0.6, tvLed[0] + 0.7, tvLed[1] + 0.6, tvLed[1] + 0.7]]);
 
     // Crosswalks on the approaches to every 4-way crossing.

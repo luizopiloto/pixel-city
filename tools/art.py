@@ -1944,82 +1944,105 @@ def gate(seed, arm=1, lift=0.0):
 TOWER_ORANGE, TOWER_WHITE = rgb("#c05a30"), rgb("#ddd6c8")
 
 
+TV_PODIUM = (4.6, 4.6, 3)                        # studio podium a × b tiles, floors
+TV_R0, TV_H = 1.35, 440                          # tower half-width on the roof, px from roof to top belt
+TV_CANVAS = (700, 1180, 350, 900)
+
+
 def tv_station(seed):
-    """TV station under a lattice broadcast tower (after the Tokyo Tower):
-    a studio block between the four legs, which taper up in orange and
-    white bands past two observation decks to an antenna mast."""
-    s = Sprite(360, 600, 180, 500, seed)
+    """TV station: a broad three-floor studio podium filling its block, and
+    on its roof a lattice broadcast tower (after the Tokyo Tower) whose
+    heavy steel legs rise in orange and white bands, braced and belted, past
+    two observation decks to a striped mast: the tallest thing in the city."""
+    s = Sprite(*TV_CANVAS, seed)
     rng = np.random.default_rng(seed)
-    R0, H = 1.1, 300                                   # half-width at the ground, px to the top deck
-    half = lambda z: R0 * (1 - z / H) ** 1.6 + 0.12    # the legs curve in as they rise
-    band = lambda z: TOWER_WHITE if int(z // 34) % 2 else TOWER_ORANGE
-
-    # Studio: two floors, glass front with the station's name, dishes on top.
-    a, b, hgt = 1.3, 1.1, 2 * FLOOR + 4
+    R0, H = TV_R0, TV_H
+    a, b, floors = TV_PODIUM
+    roof = floors * FLOOR + 4
     x0, y0 = -a / 2, -b / 2
-    wv = wall_shader(s, "#d8d0c0", a * 71.6, hgt, 2, [((i + 0.2) / 6, (i + 0.8) / 6) for i in range(6)],
-                     (0.42, 0.58), None, "plain", glass_door=True)
-    wu = wall_shader(s, "#d8d0c0", b * 71.6, hgt, 2, [((i + 0.2) / 4, (i + 0.8) / 4) for i in range(4)], None,
-                     None, "plain")
-    s.box(x0, y0, 0, a, b, hgt, flat(s, "#d8d0c0"), wv, wu)
-    flat_roof(s, x0, y0, a, b, hgt, "#6e6e6e", units=0, rng=rng)
-    bl = 0.7
-    s.box(-bl / 2, y0 + b - 0.02, hgt - 22, bl, 0.05, 14, flat(s, "#2b4a6e"),
-          sign_face(s, "TV 7", bl * HW, 14, "#2f5a88", "#e8eef4", "#f2c06a"), flat(s, "#24405e"))
-    for dx, dy in ((0.35, -0.25), (-0.3, 0.15)):       # satellite dishes
-        s.box(dx - 0.02, dy - 0.02, hgt, 0.04, 0.04, 6, *(flat(s, c) for c in ("#9791a2", "#8e8897", "#716f74")))
-        s.blob((dx, dy, hgt + 9), 5, ramp("#9a9488", "#c8c2b6", "#e8e2d6"), squash=0.55, shade=0.2)
 
-    def member(p, q, color, depth_bias=0.0):
-        (x, y), (x2, y2) = s.proj(*p), s.proj(*q)
-        s.line((x, y), (x2, y2), color, (p[0] + p[1] + q[0] + q[1]) / 2 + depth_bias)
+    # Podium: long window bands, a canopy entrance, dishes on the roof.
+    wv = wall_shader(s, "#d8d0c0", a * 71.6, roof, floors, [((i + 0.15) / 20, (i + 0.85) / 20) for i in range(20)],
+                     (0.46, 0.54), "#8e8680", "plain", glass_door=True)
+    wu = wall_shader(s, "#d8d0c0", b * 71.6, roof, floors, [((i + 0.15) / 20, (i + 0.85) / 20) for i in range(20)],
+                     None, "#8e8680", "plain")
+    s.box(x0, y0, 0, a, b, roof, flat(s, "#d8d0c0"), wv, wu)
+    s.box(x0 - 0.04, y0 - 0.04, roof - 3, a + 0.08, b + 0.08, 5, flat(s, "#cfc6b6"), flat(s, "#bdb3a2"), flat(s, "#a69c8c"))
+    flat_roof(s, x0, y0, a, b, roof + 2, "#6e6e6e", units=0, rng=rng)
+    s.box(-0.5, y0 + b, 24, 1.0, 0.34, 4, flat(s, "#2b4a6e"), flat(s, "#24405e"), flat(s, "#1e3650"))   # canopy
+    for px in (-0.46, 0.43):
+        s.box(px, y0 + b + 0.3, 0, 0.03, 0.03, 24, *(flat(s, c) for c in STEEL))
+    bl = 1.3
+    s.box(-bl / 2, y0 + b - 0.02, roof - 30, bl, 0.05, 20, flat(s, "#2b4a6e"),
+          sign_face(s, "TV 7", bl * HW, 20, "#2f5a88", "#e8eef4", "#f2c06a"), flat(s, "#24405e"))
+    for dx, dy in ((1.7, -1.7), (-1.6, 1.4), (1.6, 1.2), (-1.7, -1.5)):   # satellite dishes at the roof corners
+        s.box(dx - 0.03, dy - 0.03, roof + 2, 0.06, 0.06, 8, *(flat(s, c) for c in STEEL))
+        s.blob((dx, dy, roof + 14), 8, ramp("#9a9488", "#c8c2b6", "#e8e2d6"), squash=0.55, shade=0.2)
 
-    # Legs (three px thick) and the lattice between them, face by face.
+    z0r = roof + 2                                     # the tower stands on the roof
+    half = lambda z: R0 * max(0.0, 1 - z / H) ** 1.7 + 0.14
+    band = lambda z: TOWER_WHITE if int(z // 44) % 2 else TOWER_ORANGE
+
+    def beam(p, q, w, color_at):
+        """A steel member from p to q (z above the roof): shaded boxes w tiles thick."""
+        n = max(2, int(math.dist((p[0] * 64, p[1] * 64, p[2]), (q[0] * 64, q[1] * 64, q[2])) / 1.5))
+        for k in range(n + 1):
+            t = k / n
+            x, y, z = (p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t)
+            c = color_at(z)
+            s.box(x - w / 2, y - w / 2, z0r + z - 1, w, w, 2, flat(s, c * 1.05, 3), flat(s, c * 0.95, 3), flat(s, c * 0.8, 3))
+
+    def strut(p, q, color, thick=2):
+        (x, y), (x2, y2) = s.proj(p[0], p[1], z0r + p[2]), s.proj(q[0], q[1], z0r + q[2])
+        d = (p[0] + p[1] + q[0] + q[1]) / 2
+        for off in range(thick):
+            s.line((x + off, y), (x2 + off, y2), color * (1.0 if off == 0 else 0.78), d)
+
     corners = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
-    for cx, cy in corners:
-        for z in range(0, H, 2):
-            p, q = (cx * half(z), cy * half(z), z), (cx * half(z + 2), cy * half(z + 2), z + 2)
-            w = 2 if z < 150 else 1                        # legs: 5 px wide low, 3 px high up
-            for off in range(-w, w + 1):
-                (x, y), (x2, y2) = s.proj(*p), s.proj(*q)
-                s.line((x + off, y), (x2 + off, y2), band(z) * (0.78 if abs(off) == w else 1.0), p[0] + p[1] + 0.05)
-    # Arches between the legs over the studio, then bracing up to the top.
-    for k in range(4):
+    for cx, cy in corners:                             # foot plates, then the legs
+        s.box(cx * R0 - 0.14 + cx * 0.07, cy * R0 - 0.14 + cy * 0.07, z0r, 0.28, 0.28, 6, flat(s, "#8e8680"),
+              flat(s, "#bdb3a2"), flat(s, "#a69c8c"))
+        for z in range(0, H, 6):
+            w = 0.14 - 0.08 * z / H
+            beam((cx * half(z), cy * half(z), z), (cx * half(z + 6), cy * half(z + 6), z + 6), w, band)
+    for k in range(4):                                 # arches between the legs
         (ax, ay), (bx, by) = corners[k], corners[(k + 1) % 4]
-        pts = []
-        for t in np.linspace(0, 1, 25):
-            z = 34 + 52 * math.sin(math.pi * t)
+        prev = None
+        for t in np.linspace(0, 1, 21):
+            z = 18 + 70 * math.sin(math.pi * t)
             h = half(z)
-            pts.append((ax * h + (bx - ax) * h * t, ay * h + (by - ay) * h * t, z))
-        for p, q in zip(pts, pts[1:]):
-            member(p, q, TOWER_ORANGE)
-            member((p[0], p[1], p[2] + 1), (q[0], q[1], q[2] + 1), TOWER_ORANGE * 0.85)
-    levels = [86, 100, 114, 128, 142, 150, 168, 184, 198, 212, 224, 232, 244, 256, 268, 280, 290, H]
-    for k in range(4):
-        (ax, ay), (bx, by) = corners[k], corners[(k + 1) % 4]
-        for z0, z1 in zip(levels, levels[1:]):
-            h0, h1 = half(z0), half(z1)
+            pt = (ax * h + (bx - ax) * h * t, ay * h + (by - ay) * h * t, z)
+            if prev:
+                beam(prev, pt, 0.055, lambda z: TOWER_ORANGE)
+            prev = pt
+    levels = [88, 112, 134, 154, 172, 188, 204, 218, 232, 246, 260, 274, 288, 302, 316, 330, 346, 362, 378, 394,
+              410, 426, H]
+    for z0, z1 in zip(levels, levels[1:]):
+        h0, h1 = half(z0), half(z1)
+        for k in range(4):
+            (ax, ay), (bx, by) = corners[k], corners[(k + 1) % 4]
             A0, B0 = (ax * h0, ay * h0, z0), (bx * h0, by * h0, z0)
             A1, B1 = (ax * h1, ay * h1, z1), (bx * h1, by * h1, z1)
-            c = band((z0 + z1) / 2) * 0.9
-            member(A0, B1, c)                           # X bracing
-            member(B0, A1, c)
-            member(A1, B1, c)                           # horizontal
-    # Observation decks: a wide main deck and a small top deck, windows lit.
+            c = band((z0 + z1) / 2) * 0.92
+            strut(A0, B1, c)
+            strut(B0, A1, c)
+            beam(A1, B1, 0.05 if z1 < 250 else 0.036, band)
+
     def deck(z, r, h):
-        wall = lambda length: wall_shader(s, "#c8c2b6", length, h, 1, [((i + 0.15) / 8, (i + 0.85) / 8) for i in range(8)],
+        wall = lambda length: wall_shader(s, "#c8c2b6", length, h, 1, [((i + 0.15) / 10, (i + 0.85) / 10) for i in range(10)],
                                           None, None, "plain", glass_pal=GLASS_BLUE, floor_h=h + 20)
+        z += z0r
         s.box(-r, -r, z, 2 * r, 2 * r, h, flat(s, "#9c9284"), wall(2 * r * 71.6), wall(2 * r * 71.6))
-        s.box(-r - 0.03, -r - 0.03, z + h, 2 * r + 0.06, 2 * r + 0.06, 3, flat(s, "#8e8680"), flat(s, "#bdb3a2"), flat(s, "#a69c8c"))
-    deck(150, half(150) + 0.08, 18)
-    deck(232, half(232) + 0.06, 10)
-    # Mast: striped, thinning, with a red light on top.
-    for z in range(H, H + 120, 4):
-        w = 0.07 * (1 - (z - H) / 150)
-        s.box(-w / 2, -w / 2, z, w, w, 4, *(flat(s, band(z - H + 17) * k_) for k_ in (1.0, 0.9, 0.75)))
-    s.blob((0, 0, H + 122), 2.2, ramp("#8a2a20", "#c8402a", "#f07050"))
+        s.box(-r - 0.04, -r - 0.04, z + h, 2 * r + 0.08, 2 * r + 0.08, 4, flat(s, "#8e8680"), flat(s, "#bdb3a2"), flat(s, "#a69c8c"))
+        s.box(-r - 0.02, -r - 0.02, z - 3, 2 * r + 0.04, 2 * r + 0.04, 3, flat(s, "#6e6e6e"), flat(s, "#5b5a5c"), flat(s, "#4a494b"))
+    deck(172, half(172) + 0.1, 24)
+    deck(316, half(316) + 0.08, 14)
+    for z in range(H, H + 150, 4):                     # mast, striped, red light on top
+        w = 0.1 * (1 - (z - H) / 190)
+        s.box(-w / 2, -w / 2, z0r + z, w, w, 4, *(flat(s, band(z - H + 22) * k_) for k_ in (1.0, 0.9, 0.75)))
+    s.blob((0, 0, z0r + H + 152), 2.6, ramp("#8a2a20", "#c8402a", "#f07050"))
     s.outline(0.7)
-    return s, (2 * R0 + 0.3, 2 * R0 + 0.3)
+    return s, (a, b)
 
 
 # ---------- street furniture ----------
@@ -2182,34 +2205,108 @@ def statue(seed, kind="figure"):
     return s
 
 
-def tv_led(seed, p):
-    """The TV station's LED panels at phase p (drawn over the station, same
-    origin): a video wall on the studio's +u side and a scrolling ticker
-    across its front."""
-    s = Sprite(360, 600, 180, 500, seed)
-    a, b = 1.3, 1.1
-    x0, y0 = -a / 2, -b / 2
-    vid = ramp("#1e2a4a", "#2f5a88", "#3f8aa8", "#e8e2d6", "#e0a040", "#c8402a")
-
-    def wall(a_, b_, xs, ys):
-        v = np.sin(xs * 0.35 + p * 6.283) + np.sin(ys * 0.28 - p * 12.566) + np.sin((xs + ys) * 0.15 + p * 6.283)
-        out = np.array(vid)[np.clip(((v + 3) / 6 * len(vid)).astype(int), 0, len(vid) - 1)]
-        return np.where(((xs + ys) % 2 == 0)[:, None], out, out * 0.72)          # LED dot pitch
-    s.face((x0 + a + 0.005, y0 + 0.12, 10), (0, b - 0.3, 0), (0, 0, 44), wall, light=1.0)
-    text = "TV 7 NEWS  "
+def text_bits(text):
+    """Pixel-font bitmap (7 rows) of text, one blank column between letters."""
     cols = []
     for ch in text:
         g = GLYPHS[ch]
         cols += [[row[k] == "1" for row in g] for k in range(len(g[0]))] + [[False] * 7]
-    bitmap = np.array(cols).T                                                  # 7 × width
-    shift = int(p * bitmap.shape[1])
+    return np.array(cols[:-1]).T
 
-    def ticker(a_, b_, xs, ys):
-        row = np.clip((7 - b_ * 9).astype(int), 0, 6)
-        col = (xs + shift) % bitmap.shape[1]
-        on = bitmap[row, col] & (b_ > 0.1) & (b_ < 0.88)
-        return np.where(on[:, None], rgb("#f2c06a"), rgb("#2a1e14"))
-    s.face((x0 + 0.08, y0 + b + 0.005, 32), (a - 0.16, 0, 0), (0, 0, 9), ticker, light=1.0)
+
+def stamp(out, col, row, bits, x0, y0, color, scale=1):
+    """Paint bits (scaled) with its top-left at panel px (x0, y0)."""
+    bx, by = np.floor((col - x0) / scale).astype(int), np.floor((row - y0) / scale).astype(int)
+    ok = (bx >= 0) & (bx < bits.shape[1]) & (by >= 0) & (by < bits.shape[0])
+    hit = np.zeros(len(col), bool)
+    hit[ok] = bits[by[ok], bx[ok]]
+    return np.where(hit[:, None], rgb(color), out)
+
+
+AD_FRAMES = 48                                   # 3 ads × 16 frames, 2 s each at 8 fps
+
+
+def led_ad(s, k, t, L, Hp):
+    """LED billboard shader for ad k (0 cola, 1 chips, 2 TV show) at local
+    phase t in [0, 1), on an L × Hp px panel; TV static on the last frame."""
+    def shader(a, b, xs, ys):
+        if len(a) > 1 and xs[a >= 0.5].mean() < xs[a < 0.5].mean():          # read left to right
+            a = 1 - a
+        col, row = a * L, (1 - b) * Hp
+        n = len(a)
+        sc = 2 if Hp > 50 else 1                                         # letter size
+        if t > 0.94:                                                     # static between ads
+            g = s.rng.random(n) * 180 + 40
+            return np.stack([g, g, g], 1)
+        if k == 0:                                                       # COLA
+            out = np.repeat(rgb("#b02a24")[None], n, 0)
+            wave = np.abs(row - (Hp * 0.72 + 3 * np.sin(col * 0.09 + t * 6.283))) < 1.6
+            out = np.where(wave[:, None], rgb("#f0ece4"), out)
+            bx = L * 0.2
+            body = (np.abs(col - bx) < 5) & (row > Hp * 0.38) & (row < Hp * 0.92)
+            neck = (np.abs(col - bx) < 2 + (row - Hp * 0.18) / (Hp * 0.2) * 3) & (row > Hp * 0.18) & (row <= Hp * 0.38)
+            cap = (np.abs(col - bx) < 2.2) & (row > Hp * 0.12) & (row <= Hp * 0.18)
+            out = np.where((body | neck)[:, None], rgb("#3a1e14"), out)
+            out = np.where(((body | neck) & (col - bx > 2) & (col - bx < 3.5))[:, None], rgb("#8a5a3a"), out)
+            out = np.where((body & (row > Hp * 0.55) & (row < Hp * 0.7))[:, None], rgb("#f0ece4"), out)
+            out = np.where(cap[:, None], rgb("#c8402a"), out)
+            out = stamp(out, col, row, text_bits("COLA"), L * 0.4, Hp * 0.22 - 2 * t, "#f0ece4", sc)
+        elif k == 1:                                                     # CHIPS
+            out = np.repeat(rgb("#e0b040")[None], n, 0)
+            bx0, bx1 = L * 0.1, L * 0.34
+            zig = Hp * 0.16 + 2 * (np.floor(col / 3) % 2)
+            bag = (col > bx0) & (col < bx1) & (row > zig) & (row < Hp * 0.9)
+            out = np.where(bag[:, None], rgb("#c8502a"), out)
+            out = np.where((bag & (row > Hp * 0.42) & (row < Hp * 0.62))[:, None], rgb("#f0d890"), out)
+            for cx, cy, r in ((0.45, 0.72, 5), (0.55, 0.6, 4), (0.5, 0.85, 3.5)):          # chips flying out
+                cy = cy - 0.08 * math.sin(t * 6.283 + cx * 9)
+                d = np.hypot(col - L * cx, (row - Hp * cy) * 1.3)
+                out = np.where((d < r)[:, None], rgb("#e8c86a"), out)
+                out = np.where(((d >= r - 1) & (d < r))[:, None], rgb("#a8782a"), out)
+            out = stamp(out, col, row, text_bits("CHIPS"), L * 0.58, Hp * 0.2, "#8a2a20", sc)
+        else:                                                            # TV show promo
+            out = np.repeat(rgb("#1e2a4a")[None], n, 0) * (0.8 + 0.4 * b[:, None])
+            beam = np.abs((col - L * (0.3 + 0.2 * math.sin(t * 6.283))) - (row - Hp) * 0.5) < 5
+            out = np.where(beam[:, None], out * 1.6, out)
+            px = L * 0.22
+            head = np.hypot(col - px, row - Hp * 0.42) < 5
+            body = (np.hypot((col - px) / 1.6, row - Hp * 0.95) < 9) & (row < Hp)
+            out = np.where((head | body)[:, None], rgb("#0e1320"), out)
+            out = stamp(out, col, row, text_bits("NEWS 7"), L * 0.4, Hp * 0.18, "#f0ece4", sc)
+            live = (col > L * 0.42) & (col < L * 0.42 + 26) & (row > Hp * 0.62) & (row < Hp * 0.62 + 11)
+            if int(t * 16) % 4 < 3:
+                out = np.where(live[:, None], rgb("#c8402a"), out)
+                out = stamp(out, col, row, text_bits("LIVE"), L * 0.42 + 3, Hp * 0.62 + 2, "#f0ece4", 1)
+        return np.where(((xs + ys) % 2 == 0)[:, None], out, out * 0.8)       # LED dot pitch
+    return shader
+
+
+def tv_ads(seed, f, side):
+    """One frame (f of AD_FRAMES) of a TV station LED panel, drawn over the
+    station (same origin): side=True the big wall on the podium's +u side,
+    else the front panel by the entrance and the scrolling ticker."""
+    s = Sprite(*TV_CANVAS, seed)
+    a, b, floors = TV_PODIUM
+    x0, y0 = -a / 2, -b / 2
+    per = AD_FRAMES // 3
+    if side:
+        k, t = f // per, (f % per) / per
+        L, Hp = (b - 1.8) * 71.6, 70
+        s.face((x0 + a + 0.005, y0 + 0.9, 16), (0, b - 1.8, 0), (0, 0, Hp), led_ad(s, k, t, L, Hp), light=1.0)
+    else:
+        g = (f + per) % AD_FRAMES                      # a different ad than the side wall
+        k, t = g // per, (g % per) / per
+        L, Hp = 1.3 * 71.6, 34
+        s.face((x0 + 0.35, y0 + b + 0.005, 8), (1.3, 0, 0), (0, 0, Hp), led_ad(s, k, t, L, Hp), light=1.0)
+        bits = text_bits("TV 7 NEWS   ")
+        shift = int(f / AD_FRAMES * bits.shape[1] * 3)
+
+        def ticker(a_, b_, xs, ys):
+            row = np.clip((7 - b_ * 9).astype(int), 0, 6)
+            col = (xs + shift) % bits.shape[1]
+            on = bits[row, col] & (b_ > 0.1) & (b_ < 0.88)
+            return np.where(on[:, None], rgb("#f2c06a"), rgb("#2a1e14"))
+        s.face((x0 + 0.5, y0 + b + 0.005, 50), (a - 1.0, 0, 0), (0, 0, 9), ticker, light=1.0)
     return s
 
 
@@ -2563,7 +2660,8 @@ def main():
     save(spr, "buildings/hotel.png", footprint=[fa, fb])
     spr, (fa, fb) = tv_station(340)
     save(spr, "landmarks/tv-station.png", footprint=[fa, fb])
-    save_anim([tv_led(341, k / 16) for k in range(16)], "landmarks/tv-led.png", footprint=[0.1, 0.1])
+    save_anim([tv_ads(341, f, True) for f in range(AD_FRAMES)], "landmarks/tv-ads-side.png", footprint=[0.1, 0.1])
+    save_anim([tv_ads(342, f, False) for f in range(AD_FRAMES)], "landmarks/tv-ads-front.png", footprint=[0.1, 0.1])
     spr, (fa, fb) = fastfood(320)
     save(spr, "buildings/fastfood.png", footprint=[fa, fb])
     # Civic: one of each per district (the generator enforces "unique").

@@ -2305,28 +2305,43 @@
  },
  "landmarks/tv-station.png": {
   "size": [
-   317,
-   503
+   600,
+   838
   ],
   "anchor": [
-   158,
-   424
+   300,
+   691
   ],
   "footprint": [
-   2.5,
-   2.5
+   4.6,
+   4.6
   ]
  },
- "landmarks/tv-led.png": {
+ "landmarks/tv-ads-side.png": {
   "size": [
-   141,
-   69
+   179,
+   159
   ],
   "anchor": [
-   72,
-   46
+   -58,
+   57
   ],
-  "frames": 16,
+  "frames": 48,
+  "footprint": [
+   0.1,
+   0.1
+  ]
+ },
+ "landmarks/tv-ads-front.png": {
+  "size": [
+   240,
+   124
+  ],
+  "anchor": [
+   272,
+   43
+  ],
+  "frames": 48,
   "footprint": [
    0.1,
    0.1
