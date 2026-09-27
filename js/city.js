@@ -1721,7 +1721,7 @@
         animated.push(item);
         continue;
       }
-      addStatic(() => img[src], x - ax, y - ay, box || pointBox(u, v));
+      addStatic(() => img[src], x - ax, y - ay, box || pointBox(u, v)).src = src;
     }
     // Cars parked in the lot: the car sprite's first wheel frame, baked.
     for (const pc of city.parking ? city.parking.cars : []) {
@@ -1762,7 +1762,12 @@
 
     const hash = new ScreenHash(128);
     statics.forEach(s => hash.add(s));
-    paintOrder(statics, a => hash.query(a.rect), drawsBefore).forEach((it, i) => { it.order = i; });
+    // Paint order over the statics and the animated sprites together, so a
+    // redraw over a car can interleave them (the hash, for baking, holds
+    // only the statics).
+    const everything = new ScreenHash(128);
+    [...statics, ...animated].forEach(s => everything.add(s));
+    paintOrder([...statics, ...animated], a => everything.query(a.rect), drawsBefore).forEach((it, i) => { it.order = i; });
     await phase('statics');
 
     // The baked scene (ground + static sprites) lives in CHUNK_W × CHUNK_H
@@ -2461,8 +2466,8 @@
         const rect = drawCar(ctx, car);
         // Redraw whatever stands in front of the car, clipped to it: statics,
         // then animated sprites (a gate arm the car waits behind).
-        const front = [...hash.query(rect)].filter(st => drawsBefore(car, st)).sort(byOrder);
-        front.push(...animated.filter(a => overlap(a.rect, rect) && drawsBefore(car, a)));
+        const front = [...hash.query(rect), ...animated.filter(a => overlap(a.rect, rect))]
+          .filter(st => drawsBefore(car, st)).sort(byOrder);
         if (!front.length) continue;
         ctx.save();
         ctx.beginPath();
@@ -2539,7 +2544,7 @@
     }
     await phase('scene');
     // Test hook (tools/sim.js): hands the running city to a callback.
-    if (typeof root.__pixelCityHook === 'function') root.__pixelCityHook({ city, cars, step, seed });
+    if (typeof root.__pixelCityHook === 'function') root.__pixelCityHook({ city, cars, step, seed, statics });
     resize();
     follow(Infinity);
     render();
