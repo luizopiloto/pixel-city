@@ -334,6 +334,9 @@
       'downtown', -1, 'square');
     const typed = (t, d = -1) => [...cells.values()].filter(c => c.type === t && (d < 0 || c.district === d)).length;
     merge(Math.round(typed('downtown') / CELLS_PER_LONG), LONG_SHAPES, false);
+    // Cat's: one 2×2 gas station and supermarket in the first plaza district.
+    const plazaId = districts.findIndex(d => d.type === 'plaza');
+    if (plazaId > 0) merge(1, [[2, 2]], true, 'plaza', plazaId, 'cats');
     districts.forEach((d, id) => {
       if (d.type !== 'suburb') return;
       merge(Math.max(1, Math.round(typed('suburb', id) / SUBURB_PER_SQUARE)), [[2, 2]], false, 'suburb', id, 'square');
@@ -609,6 +612,46 @@
       artProp('street/bin-recycle.png', u0 + 3.0, v1 - 0.3);
     }
 
+    // Cat's (a 2×2 plaza block): the supermarket along the back facing its
+    // parking lot, the gas station on the +u side with its own driveway
+    // from the +v street, and the Cat's pylon by the street. The hero now
+    // and then drives in to refuel: `gas.entry` from the +v street to the
+    // pump, `gas.exitLead` on out to the +u street heading +v.
+    let gas = null;
+    function catsBlock(sb) {
+      const { u0, v0, bi, bj } = sb;
+      pave(u0, v0, 7, 7);
+      for (let u = u0; u < u0 + 5; u++) for (let v = v0 + 3; v < v0 + 6; v++) {
+        setGround(u, v, v === v0 + 4 ? 'art/ground/lot' : 'art/ground/lot-lines-v');
+      }
+      for (let u = u0 + 5; u < u0 + 7; u++) for (let v = v0 + 2; v < v0 + 7; v++) setGround(u, v, 'art/ground/lot');
+      artLot('cats/mart.png', u0 + 2.3, v0 + 1.2, sb.district);
+      artLot('cats/kiosk.png', u0 + 5.7, v0 + 0.85, sb.district);
+      props.push(['art/cats/canopy.png', u0 + 5.8, v0 + 4.6, [u0 + 5.1, u0 + 6.5, v0 + 3.4, v0 + 5.8]]);
+      artProp('cats/sign.png', u0 + 5.1, v0 + 6.5);
+      // Around the mart: carts by the doors, boxes and the big bin on its +u side.
+      for (const [cu, cv, r] of [[u0 + 1.0, v0 + 2.45, 0], [u0 + 1.3, v0 + 2.5, 0], [u0 + 3.5, v0 + 2.45, 1],
+        [u0 + 3.75, v0 + 2.5, 1], [u0 + 0.5, v0 + 2.5, 0]]) artProp(r ? 'cats/cart-r1.png' : 'cats/cart.png', cu, cv);
+      artProp('cats/dumpster.png', u0 + 4.75, v0 + 0.7);
+      artProp('cats/boxes.png', u0 + 4.6, v0 + 1.55);
+      artProp('cats/boxes.png', u0 + 4.75, v0 + 2.0);
+      // Parked cars in the lot, nose to the aisle (row v0+4).
+      const cars = [];
+      for (let k = 0; k < 9; k++) {
+        for (const [v, dir] of [[v0 + 3.5, 1], [v0 + 5.5, -1]]) {
+          if (rng() < 0.45) cars.push({ u: u0 + 0.3 + k * 0.5, v, head: [0, rng() < 0.3 ? -dir : dir], type: pick(TYPES) });
+        }
+      }
+      const vr = v0 + 7, ur = u0 + 7;                  // the +v and +u roads (tiles)
+      const entry = [];
+      fillet(entry, [u0 + 6.5, vr + 0.5], [-1, 0], [0, -1]);           // right, off the street
+      entry.push([u0 + 6 + 0.5 + LANE, v0 + 4.55]);                     // to the pump
+      const exitLead = [[u0 + 6 + 0.5 + LANE, v0 + 4.45]];
+      fillet(exitLead, [u0 + 6.5, v0 + 2.5], [0, -1], [1, 0]);          // right, across the forecourt
+      fillet(exitLead, [ur + 0.5, v0 + 2.5], [1, 0], [0, 1]);           // right, onto the +u street
+      gas = { cars, entry, exitLead, T1: [bi + 2, bj + 2], T2: [bi + 1, bj + 2], exit: [[bi + 2, bj + 1], [bi + 2, bj + 2]] };
+    }
+
     // Town square (2×2 downtown): a row of buildings along its back edge
     // facing in and one along its street edge, around a grass square with a
     // fountain, corner trees, benches, lamps and flower beds.
@@ -791,6 +834,7 @@
     }
 
     supers.filter(sb => sb.type === 'suburb').forEach(sb => (sb.kind === 'square' ? suburbSquare : suburbBlock)(sb));
+    supers.filter(sb => sb.kind === 'cats').forEach(catsBlock);
     for (const c of free) {
       const u = roadAt(c.i) + 1, v = roadAt(c.j) + 1;
       if (c.type === 'downtown') { if (c.civic) civicCell(c, u, v, 'paving'); continue; }
@@ -1130,6 +1174,7 @@
       const stops = [];
       const SIDES = [[[0, 1], 0], [[-1, 0], 1], [[0, -1], 2], [[1, 0], 3]];      // side of the block, sprite turn
       for (const c of cells.values()) {
+        if (c.sup >= 0 && supers[c.sup].kind === 'cats') continue;       // its own furniture, a driveway
         const u0 = roadAt(c.i) + 1, v0 = roadAt(c.j) + 1;
         const busy = c.type === 'downtown' || c.type === 'plaza';
         for (const [[du, dv], k] of SIDES) {
@@ -1216,7 +1261,7 @@
     }
 
     return {
-      ground, isRoad, isLand, isWater, lighthouse, parking, junction, lots, props, signals, signalAt, rng, pick,
+      ground, isRoad, isLand, isWater, lighthouse, parking, gas, junction, lots, props, signals, signalAt, rng, pick,
       NU: nu, NV: nv, IU, IV, cells: cells.size,
       districts: districts.map(d => d.type), blockedDoors, blocked,
       cellList: [...cells.values()].map(c => [c.i, c.j, c.type, c.sup >= 0]),
@@ -1265,7 +1310,7 @@
   // Hero route: pulls out from the curb at `start` (or follows `lead`, a
   // way out ending in the lane at `start`), follows the right-hand lane
   // through `corners`, and pulls in to the curb at `end`.
-  function routeLane(start, corners, end, lead = null) {
+  function routeLane(start, corners, end, lead = null, tail = null) {
     const pts = centers([start, ...corners, end]), n = pts.length, out = [];
     const dirs = pts.slice(0, -1).map((p, i) => unit(p, pts[i + 1]));
     const at = (p, d, side, along) => {
@@ -1278,7 +1323,8 @@
     else for (let k = 0; k <= K; k++) out.push(at(pts[0], dirs[0], CURB + (LANE - CURB) * ease(k / K), PULL * k / K));
     for (let i = 1; i < n - 1; i++) fillet(out, pts[i], dirs[i - 1], dirs[i]);
     const dl = dirs[n - 2];
-    for (let k = 0; k <= K; k++) out.push(at(pts[n - 1], dl, LANE + (CURB - LANE) * ease(k / K), -PULL * (1 - k / K)));
+    if (tail) out.push(...tail);                   // off the street to a stop (the gas pump)
+    else for (let k = 0; k <= K; k++) out.push(at(pts[n - 1], dl, LANE + (CURB - LANE) * ease(k / K), -PULL * (1 - k / K)));
     return out;
   }
 
@@ -1629,7 +1675,56 @@
     const t = nodeTile(ahead);
     return { behind, ahead, d, tile: [t[0] - d[0] * 2, t[1] - d[1] * 2] };
   };
+  // Refuelling: the shortest way (no U-turns) to the gas station's +v
+  // street heading -u, then into the pump; the next route leaves by the
+  // exit lead onto the +u street.
+  const REFUEL = 0.3;
+  const gas = city.gas && edgeOk(city.gas.T1, city.gas.T2) && edgeOk(...city.gas.exit) ? city.gas : null;
+  function toGas(from) {
+    const k = n => n[0] + ',' + n[1];
+    const same = (a, b) => a[0] === b[0] && a[1] === b[1];
+    const seen = new Set([k(from.ahead) + '|' + k(from.behind)]);
+    let q = [{ at: from.ahead, prev: from.behind, up: null }];
+    while (q.length) {
+      const next = [];
+      for (const e of q) {
+        if (same(e.at, gas.T1) && !same(e.prev, gas.T2)) {
+          const nodes = [gas.T2];
+          for (let x = e; x; x = x.up) nodes.unshift(x.at);
+          return nodes;
+        }
+        for (const o of DIRS) {
+          const nx = [e.at[0] + o[0], e.at[1] + o[1]];
+          if (same(nx, e.prev) || !edgeOk(e.at, nx)) continue;
+          const key = k(nx) + '|' + k(e.at);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          next.push({ at: nx, prev: e.at, up: e });
+        }
+      }
+      q = next;
+    }
+    return null;
+  }
+  function routeThrough(from, nodes, end, tail) {
+    // Lane corners: only the nodes where the route turns.
+    const pts = [from.tile, ...nodes.slice(0, -1).map(nodeTile), end.tile];
+    const corners = pts.slice(1, -1).filter((p, k) => {
+      const a = pts[k], b = pts[k + 2];
+      return !((a[0] === p[0] && p[0] === b[0]) || (a[1] === p[1] && p[1] === b[1]));
+    });
+    return buildPath(routeLane(from.tile, corners, end.tile, from.lead, tail), city.signalAt, city.ground, HERO_HALF,
+      false, city.junction);
+  }
   function planRoute(from) {
+    if (gas && !from.fromGas && city.rng() < REFUEL) {
+      const nodes = toGas(from);
+      if (nodes && nodes.length >= 2) {
+        const pump = spotOn(gas.T1, gas.T2);
+        return { path: routeThrough(from, nodes, pump, gas.entry),
+          end: { ...spotOn(...gas.exit), lead: gas.exitLead, fromGas: true } };
+      }
+    }
     let best = null;
     for (let attempt = 0; attempt < 300; attempt++) {
       const want = ROUTE_EDGES[0] + Math.floor(city.rng() * (ROUTE_EDGES[1] - ROUTE_EDGES[0] + 1));
@@ -1651,14 +1746,7 @@
     const nodes = best.length > 1 ? best : [from.ahead, ...DIRS.map(o => [from.ahead[0] + o[0], from.ahead[1] + o[1]])
       .filter(nx => edgeOk(from.ahead, nx)).slice(0, 1)];
     const end = spotOn(nodes[nodes.length - 2], nodes[nodes.length - 1]);
-    // Lane corners: only the nodes where the route turns.
-    const pts = [from.tile, ...nodes.slice(0, -1).map(nodeTile), end.tile];
-    const corners = pts.slice(1, -1).filter((p, k) => {
-      const a = pts[k], b = pts[k + 2];
-      return !((a[0] === p[0] && p[0] === b[0]) || (a[1] === p[1] && p[1] === b[1]));
-    });
-    return { path: buildPath(routeLane(from.tile, corners, end.tile, from.lead), city.signalAt, city.ground, HERO_HALF, false,
-      city.junction), end };
+    return { path: routeThrough(from, nodes, end, null), end };
   }
   const firstSpot = (() => {
     for (let tries = 0; tries < 500; tries++) {
@@ -1841,7 +1929,7 @@
       addStatic(() => img[src], x - ax, y - ay, box || pointBox(u, v)).src = src;
     }
     // Cars parked in the lot: the car sprite's first wheel frame, baked.
-    for (const pc of city.parking ? city.parking.cars : []) {
+    for (const pc of [...(city.parking ? city.parking.cars : []), ...(city.gas ? city.gas.cars : [])]) {
       const f = frameFor(pc.head[0], pc.head[1]), [x, y] = iso(pc.u, pc.v);
       const px = Math.round(x), py = Math.round(y), [cw, ch] = CAR_CELL;
       const rx = px - CAR_PIVOT[0], ry = py - CAR_PIVOT[1];

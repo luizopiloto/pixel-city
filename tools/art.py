@@ -1150,6 +1150,8 @@ def awning(s, x0, y, length, z, color, depth=0.22):
 GLYPHS = {
     "V": ["10001", "10001", "10001", "10001", "01010", "01010", "00100"],
     "W": ["10001", "10001", "10001", "10101", "10101", "11011", "10001"],
+    "M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+    "'": ["1", "1", "0", "0", "0", "0", "0"],
     "7": ["1111", "0001", "0010", "0010", "0100", "0100", "0100"],
     " ": ["00"] * 7,
     "D": ["1110", "1001", "1001", "1001", "1001", "1001", "1110"],
@@ -2322,6 +2324,212 @@ def tv_ads(seed, f, side):
     return s
 
 
+# ---------- Cat's: gas station and supermarket ----------
+
+# The mascot for the Cat's sign: a cat-eared girl, dark wavy hair, blue
+# eyes, white collar (an original pixel drawing, 20 × 20).
+MASCOT = [
+    "..K.............K...",
+    "..KK...........KK...",
+    "..KEK.KKKKKKK.KEK...",
+    "..KEEKKKKKKKKKKEEK..",
+    ".KKKKKKKHHKKKKKKKK..",
+    ".KKKKHKKKKKKKKHKKKK.",
+    "KKKKKKKKKKKKKKKKKKK.",
+    "KKKSKKSSKKKSSKKSKKK.",
+    "KKSSSSSSSSSSSSSSSKK.",
+    "KKSLLLSSSSSSLLLSSKK.",
+    "KKSWIIWSSSSWIIWSSKK.",
+    "KKSIPPISSSSIPPISSKK.",
+    "KKSIIIISSSSIIIISSKK.",
+    "KKSBSSSSSSSSSSBSSKK.",
+    ".KKSSSSSSMSSSSSSKK..",
+    ".KKKSSSSSSSSSSSKKKK.",
+    "KKK.SSSSSSSSSSS.KKK.",
+    "KK..CCCSSSSSCCC..KK.",
+    "K...CCCCCCCCCCC...K.",
+    "....CCCCCCCCCCC.....",
+]
+MASCOT_PAL = {"K": "#1e1e28", "H": "#40404e", "E": "#6a5a7a", "S": "#f0d8c8", "B": "#e8a0a0", "W": "#f4f4f4",
+              "I": "#3a5a9a", "P": "#1a2a4a", "L": "#1e1e28", "M": "#b0605a", "C": "#f0ece4"}
+# "Cat's" in a chunky script: 7 rows, slanted when drawn.
+WORD = {
+    "C": [".XXXX.", "XX..XX", "XX....", "XX....", "XX....", "XX..XX", ".XXXX."],
+    "a": ["......", "......", ".XXXX.", "....XX", ".XXXXX", "XX..XX", ".XXXXX"],
+    "t": [".XX...", ".XX...", "XXXXX.", ".XX...", ".XX...", ".XX.XX", "..XXX."],
+    "'": ["XX", "XX", "X.", "..", "..", "..", ".."],
+    "s": [".....", ".....", ".XXXX", "XX...", ".XXX.", "...XX", "XXXX."],
+}
+
+
+def cats_face(W, H):
+    """The Cat's sign face, H rows × W columns: dark board, bulb border, the
+    mascot on top, the Cat's wordmark below with a cat tail curling under."""
+    img = np.zeros((H, W, 3))
+    img[:] = rgb("#efe3c4")
+    def put(x, y, c):
+        if 0 <= x < W and 0 <= y < H:
+            img[y, x] = rgb(c)
+    mx, my = (W - 40) // 2, 2                       # mascot, at 2×
+    for r, line in enumerate(MASCOT):
+        for c, ch in enumerate(line):
+            if ch != ".":
+                for dy in (0, 1):
+                    for dx in (0, 1):
+                        put(mx + 2 * c + dx, my + 2 * r + dy, MASCOT_PAL[ch])
+    word = "Cat's"
+    width = sum(len(WORD[ch][0]) + 1 for ch in word) - 1
+    wx, wy = (W - width) // 2 + 1, my + 41
+    x = wx
+    ink = np.zeros((H, W), bool)
+    for ch in word:
+        g = WORD[ch]
+        for r, line in enumerate(g):
+            for c, bit in enumerate(line):
+                if bit == "X":
+                    xx, yy = x + c + (6 - r) // 3, wy + r            # slanted
+                    if 0 <= xx < W and 0 <= yy < H:
+                        ink[yy, xx] = True
+        x += len(g[0]) + 1
+    # Tail: from under the s, sweeping left under the word and curling up.
+    end = x - 1
+    for k in range(60):
+        t = k / 59
+        tx = end - t * (width + 2)
+        ty = wy + 9 + 1.5 * math.sin(math.pi * t)
+        if t > 0.82:                                                 # the curl at the tip
+            q = (t - 0.82) / 0.18
+            tx -= 2 * math.sin(q * math.pi)
+            ty -= 4 * q
+        for dy in ((0, 1) if t < 0.7 else (0,)):
+            yy, xx = int(round(ty)) + dy, int(round(tx))
+            if 0 <= xx < W and 0 <= yy < H:
+                ink[yy, xx] = True
+    outline = np.zeros_like(ink)
+    outline[1:] |= ink[:-1]; outline[:-1] |= ink[1:]; outline[:, 1:] |= ink[:, :-1]; outline[:, :-1] |= ink[:, 1:]
+    img[outline & ~ink] = rgb("#5a1e14")
+    img[ink] = rgb("#c8402a")
+    img[ink & (np.arange(H)[:, None] < wy + 3)] = rgb("#e0604a")
+    edge = np.zeros((H, W), bool)                   # bulbs round the edge
+    edge[0, :] = edge[-1, :] = True
+    edge[:, 0] = edge[:, -1] = True
+    img[edge] = rgb("#8a2a1a")
+    ys, xs = np.nonzero(edge)
+    dots = (xs + ys) % 2 == 0
+    img[ys[dots], xs[dots]] = rgb("#f8dc98")
+    return img
+
+
+def texture(s, tex):
+    """Shader showing an image across a face, read left to right on screen."""
+    H, W = tex.shape[:2]
+
+    def shader(a, b, xs, ys):
+        if len(a) > 1 and xs[a >= 0.5].mean() < xs[a < 0.5].mean():
+            a = 1 - a
+        col = np.clip((a * W).astype(int), 0, W - 1)
+        row = np.clip(((1 - b) * H).astype(int), 0, H - 1)
+        return tex[row, col] + (s.grain[ys, xs] - 0.5)[:, None] * 3
+    return shader
+
+
+def cats_sign(seed):
+    """The Cat's pylon: a four-sided lit cabinet on a tall column."""
+    s = Sprite(140, 260, 70, 220, seed)
+    w, H0, Hc = 0.8, 96, 60
+    s.box(-0.14, -0.14, 0, 0.28, 0.28, 6, *(flat(s, c) for c in ("#bdb3a2", "#a69c8c", "#8e8680")))
+    s.box(-0.07, -0.07, 6, 0.14, 0.14, H0 - 6, *(flat(s, c, 3) for c in ("#5b5a5c", "#4a494b", "#3e3d3f")))
+    face = texture(s, cats_face(int(w * HW), Hc))
+    s.box(-w / 2, -w / 2, H0, w, w, Hc, flat(s, "#1a1628"), face, face)
+    s.box(-w / 2 - 0.03, -w / 2 - 0.03, H0 + Hc, w + 0.06, w + 0.06, 4, flat(s, "#c8402a"), flat(s, "#a8321f"), flat(s, "#8a2a1a"))
+    s.box(-w / 2 - 0.02, -w / 2 - 0.02, H0 - 4, w + 0.04, w + 0.04, 4, flat(s, "#c8402a"), flat(s, "#a8321f"), flat(s, "#8a2a1a"))
+    s.outline(0.8)
+    return s
+
+
+def supermarket(seed):
+    """Cat's Mart: a wide one-storey supermarket, glass storefront with
+    automatic doors, a lit CAT'S MART fascia, AC units on the roof."""
+    rng = np.random.default_rng(seed)
+    s = Sprite(420, 260, 210, 170, seed)
+    a, b, h = 4.0, 1.8, 38
+    x0, y0 = -a / 2, -b / 2
+    wv = wall_shader(s, "#d8d0c0", a * 71.6, h, 1, [], (0.45, 0.55), "#8e8680", "plain", glass_door=True,
+                     storefront="#2a2440", floor_h=h)
+    wu = wall_shader(s, "#d8d0c0", b * 71.6, h, 1, [], None, "#8e8680", "plain")
+    s.box(x0, y0, 0, a, b, h, flat(s, "#d8d0c0"), wv, wu)
+    flat_roof(s, x0, y0, a, b, h, "#6e6e6e", units=4, rng=rng)
+    bl = 1.6
+    s.box(-bl / 2, y0 + b - 0.01, h, bl, 0.05, 13, flat(s, "#2a2440"),
+          sign_face(s, "CAT'S MART", bl * HW, 13, "#2a2440", "#f2c06a", "#f8dc98"), flat(s, "#1a1628"))
+    s.outline(0.7)
+    return s, (a, b)
+
+
+def gas_canopy(seed):
+    """Fuel canopy over a pump island: four columns, a deep roof with a lit
+    brand band, two pumps with screens and hoses on a raised island."""
+    s = Sprite(240, 200, 120, 130, seed)
+    a, b, h = 1.4, 2.4, 40
+    x0, y0 = -a / 2, -b / 2
+    # Island along v near the +u edge, two pumps.
+    ix = x0 + a - 0.36
+    s.box(ix - 0.12, y0 + 0.35, 0, 0.24, b - 0.7, 3, flat(s, "#d8d0c0"), flat(s, "#c9a84a"), flat(s, "#bdb3a2"))
+    for py in (y0 + 0.7, y0 + b - 0.9):
+        s.box(ix - 0.07, py, 3, 0.14, 0.2, 16, flat(s, "#c8402a"), flat(s, "#d8d0c0"), flat(s, "#b0341f"))
+        s.box(ix + 0.071, py + 0.05, 11, 0.001, 0.1, 5, flat(s, "#3a5a9a"), flat(s, "#3a5a9a"), flat(s, "#5aa0d0"))   # screen
+        s.box(ix + 0.07, py + 0.15, 6, 0.02, 0.02, 7, flat(s, "#2e3336"), flat(s, "#2e3336"), flat(s, "#2e3336"))    # hose
+    for cx, cy in ((x0 + 0.1, y0 + 0.2), (x0 + a - 0.14, y0 + 0.2), (x0 + 0.1, y0 + b - 0.24), (x0 + a - 0.14, y0 + b - 0.24)):
+        s.box(cx, cy, 0, 0.05, 0.05, h, *(flat(s, c) for c in ("#d8d0c0", "#bdb3a2", "#a69c8c")))
+    band = lambda length: (lambda a_, b_, xs, ys: np.where(((b_ > 0.35) & (b_ < 0.65))[:, None], rgb("#f2c06a"),
+                                                          rgb("#2a2440")) + (s.grain[ys, xs] - 0.5)[:, None] * 4)
+    s.box(x0 - 0.05, y0 - 0.05, h, a + 0.1, b + 0.1, 8, flat(s, "#bdb3a2"), band(a), band(b))
+    s.outline(0.75)
+    return s, (a, b)
+
+
+def cart(seed, rot=0):
+    """Shopping cart: wire basket on a frame with small wheels, handle at -u."""
+    s = Sprite(50, 44, 25, 30, seed)
+    s.rot = rot
+    wire = lambda a_, b_, xs, ys: np.where(((xs % 2 == 0) | (ys % 2 == 0))[:, None], rgb("#c8c2b6"), rgb("#6e6e74"))
+    s.box(-0.12, -0.07, 4, 0.24, 0.14, 7, wire, wire, wire)
+    if rot:
+        s.face((-0.12, -0.07, 4), (0.24, 0, 0), (0, 0, 7), wire, light="auto")
+        s.face((-0.12, -0.07, 4), (0, 0.14, 0), (0, 0, 7), wire, light="auto")
+    s.box(-0.15, -0.07, 10, 0.03, 0.14, 1, *(flat(s, "#c8402a") for _ in range(3)))       # handle
+    for x in (-0.1, 0.09):
+        for y in (-0.06, 0.05):
+            s.box(x, y, 0, 0.02, 0.02, 3, *(flat(s, "#2e3336") for _ in range(3)))
+    s.outline(0.85)
+    return s
+
+
+def boxes(seed):
+    """A small stack of cardboard boxes."""
+    s = Sprite(60, 60, 30, 42, seed)
+    rng = np.random.default_rng(seed)
+    card = ("#b08a5a", "#9a7648", "#86653c")
+    for x, y, z, w, d, h in ((-0.12, -0.08, 0, 0.16, 0.14, 8), (0.05, -0.06, 0, 0.12, 0.12, 7),
+                             (-0.09, -0.05, 8, 0.13, 0.11, 7), (-0.02, 0.07, 0, 0.1, 0.1, 5)):
+        s.box(x, y, z, w, d, h, *(flat(s, rgb(c) * rng.uniform(0.92, 1.05), 4) for c in card))
+    s.outline(0.8)
+    return s
+
+
+def big_dumpster(seed):
+    """Big blue trash container with two lids and a side drain."""
+    s = Sprite(90, 70, 45, 46, seed)
+    blue = ("#3f6a98", "#2f5a88", "#244870")
+    s.box(-0.26, -0.15, 2, 0.52, 0.3, 16, *(flat(s, c, 5) for c in blue))
+    s.box(-0.27, -0.16, 18, 0.26, 0.32, 2, flat(s, "#2a4a70"), flat(s, "#24405e"), flat(s, "#1e3650"))
+    s.box(0.01, -0.16, 18, 0.26, 0.32, 3, flat(s, "#2e5078"), flat(s, "#24405e"), flat(s, "#1e3650"))
+    for x in (-0.22, 0.2):
+        s.box(x, -0.12, 0, 0.03, 0.24, 2, *(flat(s, "#2e3336") for _ in range(3)))
+    s.outline(0.78)
+    return s
+
+
 # ---------- recreation ----------
 
 REC_WOOD = ("#8a6751", "#765743", "#5f4646")
@@ -2612,6 +2820,18 @@ def main():
         save(trash_can(175, kind), f"street/bin-{kind}.png")
     save(statue(176, "figure"), "street/statue.png")
     save(statue(177, "obelisk"), "street/obelisk.png")
+    # Cat's gas station and supermarket (the plaza district's 2×2 block).
+    save(cats_sign(180), "cats/sign.png")
+    spr, (fa, fb) = supermarket(181)
+    save(spr, "cats/mart.png", footprint=[fa, fb])
+    spr, (fa, fb) = gas_canopy(182)
+    save(spr, "cats/canopy.png", footprint=[fa, fb])
+    spr, (fa, fb) = building(183, "shop", a=1.2, b=0.9, floors=1, wall="#d8d0c0")
+    save(spr, "cats/kiosk.png", footprint=[fa, fb])
+    save(cart(184), "cats/cart.png")
+    save(cart(184, 1), "cats/cart-r1.png")
+    save(boxes(185), "cats/boxes.png")
+    save(big_dumpster(186), "cats/dumpster.png")
     # Recreation: suburb BBQ areas and playgrounds, downtown squares.
     save(picnic_table(150), "rec/picnic-table.png")
     save(barbecue(151), "rec/barbecue.png")

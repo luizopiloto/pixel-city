@@ -1743,6 +1743,98 @@
    94
   ]
  },
+ "cats/sign.png": {
+  "size": [
+   110,
+   196
+  ],
+  "anchor": [
+   55,
+   187
+  ]
+ },
+ "cats/mart.png": {
+  "size": [
+   372,
+   221
+  ],
+  "anchor": [
+   186,
+   131
+  ],
+  "footprint": [
+   4.0,
+   1.8
+  ]
+ },
+ "cats/canopy.png": {
+  "size": [
+   240,
+   164
+  ],
+  "anchor": [
+   120,
+   112
+  ],
+  "footprint": [
+   1.4,
+   2.4
+  ]
+ },
+ "cats/kiosk.png": {
+  "size": [
+   145,
+   102
+  ],
+  "anchor": [
+   78,
+   68
+  ],
+  "footprint": [
+   1.2,
+   0.9
+  ]
+ },
+ "cats/cart.png": {
+  "size": [
+   26,
+   24
+  ],
+  "anchor": [
+   14,
+   18
+  ]
+ },
+ "cats/cart-r1.png": {
+  "size": [
+   26,
+   23
+  ],
+  "anchor": [
+   12,
+   18
+  ]
+ },
+ "cats/boxes.png": {
+  "size": [
+   27,
+   27
+  ],
+  "anchor": [
+   12,
+   19
+  ]
+ },
+ "cats/dumpster.png": {
+  "size": [
+   56,
+   45
+  ],
+  "anchor": [
+   28,
+   34
+  ]
+ },
  "rec/picnic-table.png": {
   "size": [
    59,
