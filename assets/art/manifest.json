@@ -2338,12 +2338,12 @@
  },
  "landmarks/tv-ads-front.png": {
   "size": [
-   240,
-   124
+   256,
+   117
   ],
   "anchor": [
    272,
-   43
+   30
   ],
   "frames": 48,
   "footprint": [

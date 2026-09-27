@@ -1949,6 +1949,19 @@ TV_R0, TV_H = 1.35, 440                          # tower half-width on the roof,
 TV_CANVAS = (700, 1180, 350, 900)
 
 
+def tv_front(s):
+    """What stands out from the podium's front wall: the entrance canopy on
+    its posts and the TV 7 sign (also drawn, for depth, under the LED panels)."""
+    a, b, floors = TV_PODIUM
+    y0 = -b / 2
+    s.box(-0.5, y0 + b, 24, 1.0, 0.34, 4, flat(s, "#2b4a6e"), flat(s, "#24405e"), flat(s, "#1e3650"))   # canopy
+    for px in (-0.46, 0.43):
+        s.box(px, y0 + b + 0.3, 0, 0.03, 0.03, 24, *(flat(s, c) for c in STEEL))
+    bl = 1.3
+    s.box(-bl / 2, y0 + b - 0.02, floors * FLOOR + 4 - 30, bl, 0.05, 20, flat(s, "#2b4a6e"),
+          sign_face(s, "TV 7", bl * HW, 20, "#2f5a88", "#e8eef4", "#f2c06a"), flat(s, "#24405e"))
+
+
 def tv_station(seed):
     """TV station: a broad three-floor studio podium filling its block, and
     on its roof a lattice broadcast tower (after the Tokyo Tower) whose
@@ -1969,12 +1982,7 @@ def tv_station(seed):
     s.box(x0, y0, 0, a, b, roof, flat(s, "#d8d0c0"), wv, wu)
     s.box(x0 - 0.04, y0 - 0.04, roof - 3, a + 0.08, b + 0.08, 5, flat(s, "#cfc6b6"), flat(s, "#bdb3a2"), flat(s, "#a69c8c"))
     flat_roof(s, x0, y0, a, b, roof + 2, "#6e6e6e", units=0, rng=rng)
-    s.box(-0.5, y0 + b, 24, 1.0, 0.34, 4, flat(s, "#2b4a6e"), flat(s, "#24405e"), flat(s, "#1e3650"))   # canopy
-    for px in (-0.46, 0.43):
-        s.box(px, y0 + b + 0.3, 0, 0.03, 0.03, 24, *(flat(s, c) for c in STEEL))
-    bl = 1.3
-    s.box(-bl / 2, y0 + b - 0.02, roof - 30, bl, 0.05, 20, flat(s, "#2b4a6e"),
-          sign_face(s, "TV 7", bl * HW, 20, "#2f5a88", "#e8eef4", "#f2c06a"), flat(s, "#24405e"))
+    tv_front(s)
     for dx, dy in ((1.7, -1.7), (-1.6, 1.4), (1.6, 1.2), (-1.7, -1.5)):   # satellite dishes at the roof corners
         s.box(dx - 0.03, dy - 0.03, roof + 2, 0.06, 0.06, 8, *(flat(s, c) for c in STEEL))
         s.blob((dx, dy, roof + 14), 8, ramp("#9a9488", "#c8c2b6", "#e8e2d6"), squash=0.55, shade=0.2)
@@ -2290,6 +2298,8 @@ def tv_ads(seed, f, side):
     a, b, floors = TV_PODIUM
     x0, y0 = -a / 2, -b / 2
     per = AD_FRAMES // 3
+    tv_front(s)                                       # in the depth buffer only: it hides what it covers
+    before = s.depth.copy()
     if side:
         k, t = f // per, (f % per) / per
         L, Hp = (b - 1.8) * 71.6, 70
@@ -2307,7 +2317,8 @@ def tv_ads(seed, f, side):
             col = (xs + shift) % bits.shape[1]
             on = bits[row, col] & (b_ > 0.1) & (b_ < 0.88)
             return np.where(on[:, None], rgb("#f2c06a"), rgb("#2a1e14"))
-        s.face((x0 + 0.5, y0 + b + 0.005, 50), (a - 1.0, 0, 0), (0, 0, 9), ticker, light=1.0)
+        s.face((0.85, y0 + b + 0.005, 52), (a / 2 - 1.1, 0, 0), (0, 0, 9), ticker, light=1.0)   # right of the sign
+    s.alpha[s.depth == before] = 0                    # keep only the panel pixels in front
     return s
 
 
