@@ -79,6 +79,9 @@
   // and one long block (1×2, 1×3, 2×1 or 3×1 merged) per CELLS_PER_LONG
   // downtown cells, mostly 1×2 / 2×1; suburbs get one per SUBURB_PER_LONG.
   const DOWNTOWN_CELLS = 256, SUPER_COUNT = 8, CELLS_PER_LONG = 7, SUBURB_PER_LONG = 6;
+  // Sea around the island: empty lattice cells on the two back sides (-u,
+  // -v) and the two camera-facing ones (+u, +v), where the beach is wider.
+  const SEA_BACK = 2, SEA_FRONT = 4;
   const LONG_SHAPES = [[1, 2], [1, 2], [1, 2], [2, 1], [2, 1], [2, 1], [1, 3], [3, 1]];
   const SUBURB_SHAPES = [[1, 2], [1, 3], [2, 1], [3, 1]];
   // Districts attached to downtown's sides: [type, min cells, max cells].
@@ -295,14 +298,14 @@
         }
       }
     }
-    // Crop the lattice to the cells in use.
+    // Crop the lattice to the cells in use, plus the sea around them.
     const all = [...cells.values()];
-    const mi = Math.min(...all.map(c => c.i)), mj = Math.min(...all.map(c => c.j));
+    const mi = Math.min(...all.map(c => c.i)) - SEA_BACK, mj = Math.min(...all.map(c => c.j)) - SEA_BACK;
     const cropped = new Map();
     for (const c of all) { c.i -= mi; c.j -= mj; cropped.set(key(c.i, c.j), c); }
     cells.clear();
     for (const [k, c] of cropped) cells.set(k, c);
-    const IU = Math.max(...all.map(c => c.i)) + 1, IV = Math.max(...all.map(c => c.j)) + 1;
+    const IU = Math.max(...all.map(c => c.i)) + 1 + SEA_FRONT, IV = Math.max(...all.map(c => c.j)) + 1 + SEA_FRONT;
     const cellAt = (ci, cj) => cells.get(key(ci, cj));
     const nu = roadAt(IU) + 2, nv = roadAt(IV) + 2;
 
@@ -377,7 +380,10 @@
       const [u, v] = k.split(',').map(Number);
       for (let du = -1; du <= 1; du++) for (let dv = -1; dv <= 1; dv++) land.add(key(u + du, v + dv));
     }
-    const isLand = (u, v) => land.has(key(u, v));
+    const inCity = (u, v) => land.has(key(u, v));
+    const sea = new Set();                         // filled in by the waterfront below
+    const isLand = (u, v) => u >= 0 && v >= 0 && u < nu && v < nv;        // every tile has ground
+    const isWater = (u, v) => sea.has(key(u, v));
 
     const groundMap = new Map();
     const lots = [], props = [];
@@ -710,7 +716,151 @@
     for (const k of land) {
       if (core.has(k)) continue;
       const [u, v] = k.split(',').map(Number);
-      if ((!isLand(u + 1, v) || !isLand(u, v + 1)) && rng() < 0.3) prop(pick(PLANTERS), u + 0.5, v + 0.5);
+      if ((!inCity(u + 1, v) || !inCity(u, v + 1)) && rng() < 0.3) prop(pick(PLANTERS), u + 0.5, v + 0.5);
+    }
+
+    // Waterfront: the city is an island. Sand rings its land, wider and busier
+    // on the two camera-facing sides (+u, +v); sea fills the rest of the
+    // world. Beach width and busyness follow `front`: 1 where the beach lies
+    // +u or +v of the land nearest it, 0 where it lies -u or -v.
+    let lighthouse = null;
+    {
+      const dist = new Map(), from = new Map();     // tiles from the city's land, and which land tile
+      let queue = [...land].map(k => k.split(',').map(Number));
+      for (const [u, v] of queue) { dist.set(key(u, v), 0); from.set(key(u, v), [u, v]); }
+      for (let d = 1; queue.length; d++) {
+        const next = [];
+        for (const [u, v] of queue) for (const [du, dv] of NB4) {
+          const a = u + du, b = v + dv, k = key(a, b);
+          if (a < 0 || b < 0 || a >= nu || b >= nv || dist.has(k)) continue;
+          dist.set(k, d);
+          from.set(k, from.get(key(u, v)));
+          next.push([a, b]);
+        }
+        queue = next;
+      }
+      const facing = new Map();                     // raw front-ness, smoothed below
+      for (const [k, d] of dist) {
+        if (!d) continue;
+        const [u, v] = k.split(',').map(Number), [su, sv] = from.get(k);
+        facing.set(k, Math.max(0, Math.max(u - su, v - sv) / Math.hypot(u - su, v - sv)));
+      }
+      const front = (u, v) => {                     // averaged over a 7×7 patch, so the width eases round corners
+        let t = 0, n = 0;
+        for (let a = -3; a <= 3; a++) for (let b = -3; b <= 3; b++) {
+          const f = facing.get(key(u + a, v + b));
+          if (f !== undefined) { t += f; n++; }
+        }
+        return n ? t / n : 0;
+      };
+      const sand = [];
+      for (const [k, d] of dist) {
+        if (!d) continue;
+        const [u, v] = k.split(',').map(Number), f = front(u, v);
+        if (d === 1 || d <= 1.4 + 6.6 * f * f + (field(u / 2.5, v / 2.5) - 0.5) * 2.4) {
+          setGround(u, v, rng() < 0.7 ? 'art/ground/sand-a' : 'art/ground/sand-b');
+          sand.push([u, v, f, d]);
+        } else sea.add(k);
+      }
+      // Sea tiles: shoreline autotiles where they touch sand (sides n = -u,
+      // e = -v, s = +u, w = +v; corners where only the diagonal is dry).
+      const wet = (u, v) => u < 0 || v < 0 || u >= nu || v >= nv || sea.has(key(u, v));
+      for (const k of sea) {
+        const [u, v] = k.split(',').map(Number);
+        const n = !wet(u - 1, v), e = !wet(u, v - 1), so = !wet(u + 1, v), w = !wet(u, v + 1);
+        const sides = (n ? 'n' : '') + (e ? 'e' : '') + (so ? 's' : '') + (w ? 'w' : '');
+        const corners = (!n && !e && !wet(u - 1, v - 1) ? 'ne' : '') + (!e && !so && !wet(u + 1, v - 1) ? 'es' : '') +
+          (!so && !w && !wet(u + 1, v + 1) ? 'sw' : '') + (!w && !n && !wet(u - 1, v + 1) ? 'wn' : '');
+        setGround(u, v, sides || corners ? `art/ground/shore-${sides}${corners ? '-' + corners : ''}`
+          : rng() < 0.5 ? 'art/ground/water-a' : 'art/ground/water-b');
+      }
+      // Offshore distance, for buoys and boats.
+      const depth = new Map();
+      let ring = [...sea].filter(k => { const [u, v] = k.split(',').map(Number); return NB4.some(([a, b]) => !wet(u + a, v + b)); });
+      ring.forEach(k => depth.set(k, 1));
+      for (let d = 2; ring.length; d++) {
+        const next = [];
+        for (const k of ring) {
+          const [u, v] = k.split(',').map(Number);
+          for (const [a, b] of NB4) { const q = key(u + a, v + b); if (sea.has(q) && !depth.has(q)) { depth.set(q, d); next.push(q); } }
+        }
+        ring = next;
+      }
+
+      const taken = new Set();
+      const take = (u, v, r = 0) => { for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) taken.add(key(u + a, v + b)); };
+      const beachProp = (name, u, v, box) => props.push(['art/' + name, u, v, ...(box ? [box] : [])]);
+      const shoreline = ([u, v]) => NB4.some(([a, b]) => sea.has(key(u + a, v + b)));
+      // The lighthouse: on the front shore tile lowest on screen.
+      const tip = sand.filter(t => t[2] > 0.5 && shoreline(t)).sort((a, b) => b[0] + b[1] - a[0] - a[1])[0];
+      if (tip) {
+        const [u, v] = tip;
+        lighthouse = [u + 0.5, v + 0.5];
+        artLot('landmarks/lighthouse.png', u + 0.5, v + 0.5, 0);
+        take(u, v, 1);
+        beachProp('nature/rocks/rocks.png', u + 0.2, v + 1.4);
+        beachProp('nature/rocks/rocks-small.png', u + 1.3, v + 0.3);
+      }
+      // Piers straight out to sea from the front beach, a rowboat alongside.
+      const piers = [];
+      for (const [u, v, f] of shuffle(sand.filter(t => t[2] > 0.6 && shoreline(t)))) {
+        if (piers.length >= 3 || taken.has(key(u, v)) || piers.some(([a, b]) => Math.abs(a - u) + Math.abs(b - v) < 14)) continue;
+        for (const [du, dv, name] of [[1, 0, 'beach/pier.png'], [0, 1, 'beach/pier-v.png']]) {
+          if (![1, 2, 3, 4, 5].every(k => sea.has(key(u + du * k, v + dv * k)) &&
+            sea.has(key(u + du * k + dv, v + dv * k + du)) && sea.has(key(u + du * k - dv, v + dv * k - du)))) continue;
+          for (let k = 0; k < 4; k++) {
+            const pu = du ? u + 0.7 + k : u + 0.31, pv = dv ? v + 0.7 + k : v + 0.31;
+            beachProp(name, pu, pv, [pu, pu + (du ? 1 : 0.38), pv, pv + (dv ? 1 : 0.38)]);
+          }
+          beachProp('beach/rowboat.png', u + du * 3.2 + dv * 0.9, v + dv * 3.2 + du * 0.9);
+          piers.push([u, v]);
+          take(u, v, 1);
+          break;
+        }
+      }
+      // Beach life: busy in front, sparse at the back.
+      let guard = [];
+      for (const [u, v, f, d] of shuffle(sand)) {
+        if (taken.has(key(u, v))) continue;
+        const cu = u + 0.3 + rng() * 0.4, cv = v + 0.3 + rng() * 0.4;
+        if (f < 0.45) {
+          const r = rng();
+          if (r < 0.05) beachProp(pick(['nature/rocks/rocks.png', 'nature/rocks/rocks-small.png']), cu, cv);
+          else if (r < 0.08) beachProp(pick(['nature/trees/palm-small.png', 'nature/trees/pine-small.png']), cu, cv);
+          else continue;
+          take(u, v);
+          continue;
+        }
+        const r = rng();
+        if (shoreline([u, v]) && r < 0.08 && !guard.some(([a, b]) => Math.abs(a - u) + Math.abs(b - v) < 12)) {
+          beachProp('beach/lifeguard-tower.png', u + 0.5, v + 0.5);
+          guard.push([u, v]);
+          take(u, v, 1);
+        } else if (d <= 2 && r < 0.12) {
+          beachProp(pick(['nature/trees/palm.png', 'nature/trees/palm-small.png']), cu, cv);
+          take(u, v);
+        } else if (d <= 2 && r < 0.16) {
+          beachProp(pick(['beach/hut-teal.png', 'beach/hut-red.png']), u + 0.5, v + 0.5);
+          if (rng() < 0.6) beachProp('beach/barrel.png', u + 0.95, v + 0.2);
+          take(u, v, 1);
+        } else if (d > 1 && r < 0.1 + 0.22 * f) {            // umbrella with a lounger or a towel
+          const au = u + 0.15 + rng() * 0.35, av = v + 0.15 + rng() * 0.35;
+          beachProp(pick(['beach/umbrella-red.png', 'beach/umbrella-teal.png', 'beach/umbrella-gold.png']), au, av);
+          beachProp(pick(['beach/lounger-teal.png', 'beach/lounger-red.png', 'beach/towel-purple.png', 'beach/towel-teal.png']),
+            au + 0.28 + rng() * 0.12, av + 0.22 + rng() * 0.12);
+          take(u, v);
+        } else if (d > 1 && r < 0.14 + 0.28 * f) {           // just a towel
+          beachProp(pick(['beach/towel-purple.png', 'beach/towel-teal.png']), cu, cv);
+          take(u, v);
+        }
+      }
+      // Buoys marking the swimming area, and a few boats, off the front beach.
+      for (const k of sea) {
+        const [u, v] = k.split(',').map(Number), d = depth.get(k), f = front(u, v);
+        if (f < 0.5) continue;
+        if (d === 3 && rng() < 0.22) beachProp('beach/buoy.png', u + 0.5, v + 0.5);
+        else if (d >= 2 && d <= 5 && rng() < 0.006) beachProp('beach/rowboat.png', u + 0.5, v + 0.5);
+      }
     }
 
     // Entrances: every building's door is on its +v front. Keep a clear
@@ -775,7 +925,7 @@
 
     const toTiles = r => r.map(([i, j]) => [roadAt(i), roadAt(j)]);
     return {
-      ground, isRoad, isLand, junction, lots, props, signals, signalAt, rng, pick,
+      ground, isRoad, isLand, isWater, lighthouse, junction, lots, props, signals, signalAt, rng, pick,
       routes: routes.map(toTiles), NU: nu, NV: nv, IU, IV, cells: cells.size,
       districts: districts.map(d => d.type), blockedDoors, blocked,
       cellList: [...cells.values()].map(c => [c.i, c.j, c.type, c.sup >= 0]),
@@ -1001,7 +1151,7 @@
   // Soil edge under the two camera-facing sides of the island.
   // Soil edge under a land tile's camera-facing sides that border the void
   // (sw: its +v side, se: its +u side), clipped to [xMin, xMax).
-  function drawSlab(ctx, u, v, sw, se, xMin = -Infinity, xMax = Infinity) {
+  function drawSlab(ctx, u, v, sw, se, xMin = -Infinity, xMax = Infinity, wet = false) {
     const [tx, ty] = iso(u, v);
     const side = (x0, x1, y0, slope, fill, lip) => {
       for (let x = Math.max(x0, Math.floor(xMin)); x < Math.min(x1, Math.ceil(xMax)); x++) {
@@ -1012,8 +1162,8 @@
         ctx.fillRect(x, y + 2, 1, SLAB - 2);
       }
     };
-    if (sw) side(tx - HW, tx, ty + HH, 0.5, '#5b4a31', '#4d5a1f');
-    if (se) side(tx, tx + HW, ty + TH, -0.5, '#46382a', '#3f4a1a');
+    if (sw) side(tx - HW, tx, ty + HH, 0.5, wet ? '#1d5663' : '#5b4a31', wet ? '#3e92a2' : '#4d5a1f');
+    if (se) side(tx, tx + HW, ty + TH, -0.5, wet ? '#174651' : '#46382a', wet ? '#2f8191' : '#3f4a1a');
   }
 
 
@@ -1199,7 +1349,7 @@
     // Sprites drawn by tools/art.py, described by their manifest.
     const art = await fetch(base + 'art/manifest.json').then(r => (r.ok ? r.json() : {}), () => ({}));
     const srcs = new Set([
-      ...Object.keys(art).filter(k => !k.startsWith('ground/shore')).map(k => 'art/' + k),
+      ...Object.keys(art).map(k => 'art/' + k),
       ...Object.values(ROAD_TILES).map(([n]) => `tiles/${n}.png`),
       ...['grass', 'paving', 'pond', 'pool', 'canal'].map(n => `tiles/${n}.png`),
       ...Object.values(BUILDINGS).map(b => b.src),
@@ -1256,7 +1406,7 @@
           const gr = city.ground(u, v);
           if (!gr) continue;
           const sw = !city.isLand(u, v + 1), se = !city.isLand(u + 1, v);
-          if (sw || se) drawSlab(g, u, v, sw, se, x, x + w);
+          if (sw || se) drawSlab(g, u, v, sw, se, x, x + w, city.isWater(u, v));
           drawTile(g, img[gr[0].startsWith('art/') ? gr[0] + '.png' : `tiles/${gr[0]}.png`], u, v, gr[1]);
         }
       }
@@ -1289,10 +1439,10 @@
       addStatic(() => img[b.src], x - b.base[0], y - b.base[1],
         [cu - b.a / 2, cu + b.a / 2, cv - b.b / 2, cv + b.b / 2]);
     }
-    for (const [src, u, v] of city.props) {
+    for (const [src, u, v, box] of city.props) {
       const [ax, ay] = src.startsWith('art/') ? art[src.slice(4)].anchor : PROP_ANCHORS[src];
       const [x, y] = iso(u, v);
-      addStatic(() => img[src], x - ax, y - ay, pointBox(u, v));
+      addStatic(() => img[src], x - ax, y - ay, box || pointBox(u, v));
     }
 
     // Signal heads: one per axis, on the two camera-facing corners.
@@ -1697,7 +1847,7 @@
       body: '#2b303b', bodyHi: '#454c5a', outline: '#07090d', button: '#1a1e26',
       speaker: '#161a22', lens: '#1d3b5c', home: '#5b6477',
       screen: '#0e1320', status: '#070a11', text: '#c9d1e0',
-      grass: '#1b2a25', dirt: '#2e2a22', paving: '#262f3f', water: '#1f3552', lot: '#2c3548', road: '#46526b',
+      grass: '#1b2a25', dirt: '#2e2a22', paving: '#262f3f', water: '#1f3552', sand: '#3a3527', lot: '#2c3548', road: '#46526b',
       ahead: '#ff4e00', behind: '#b8c1d3', car: '#ffffff', carEdge: '#0e1320',
     };
     const mmX = (u, v) => 1 + MM_HW * (NV + u - v);
@@ -1746,7 +1896,8 @@
             : name.includes('grass') ? MM_C.grass
             : name.includes('dirt') ? MM_C.dirt
             : name === 'paving' ? MM_C.paving
-            : ['pond', 'pool', 'canal'].includes(name) ? MM_C.water
+            : ['pond', 'pool', 'canal'].includes(name) || /water|shore/.test(name) ? MM_C.water
+            : name.includes('sand') ? MM_C.sand
             : MM_C.road;
           const cx = mmX(u + 0.5, v + 0.5), cy = mmY(u + 0.5, v + 0.5);
           for (let y = Math.floor(cy - MM_HH); y <= cy + MM_HH; y++) {
@@ -1971,6 +2122,7 @@
         ctx.restore();
       }
 
+      drawBeam(ctx);
       // The marker floats above everything so the hero is never lost.
       const [hx, hy] = heroScreen();
       const bob = Math.round(Math.sin(clock * 2.4) * 2);
@@ -1980,6 +2132,42 @@
         if (f !== tiltFocus) root.style.setProperty('--tilt-focus', (tiltFocus = f) + '%');
       }
       drawMinimap();
+    }
+
+    // Lighthouse beam: two opposite wedges of light turning at lamp height,
+    // and a glow on the lantern that flares as a beam sweeps toward the camera.
+    const LAMP = (art['landmarks/lighthouse.png'] || {}).lamp || [0, -139];
+    function drawBeam(c) {
+      if (!city.lighthouse) return;
+      const [bx, by] = iso(...city.lighthouse), x = bx + LAMP[0], y = by + LAMP[1];
+      if (!overlap([x - 520, y - 300, 1040, 600], [view.x, view.y, view.w, view.h])) return;
+      const L = 7, spread = 0.14;
+      const at = (du, dv) => [x + (du - dv) * HW, y + (du + dv) * HH];
+      c.save();
+      c.globalCompositeOperation = 'screen';
+      let facing = 0;
+      for (const a of [clock * 0.8, clock * 0.8 + Math.PI]) {
+        const du = Math.cos(a), dv = Math.sin(a);
+        facing = Math.max(facing, (du + dv) / Math.SQRT2);
+        const [ex, ey] = at(du * L, dv * L);
+        const grad = c.createLinearGradient(x, y, ex, ey);
+        grad.addColorStop(0, 'rgba(255, 236, 170, 0.34)');
+        grad.addColorStop(1, 'rgba(255, 236, 170, 0)');
+        c.fillStyle = grad;
+        c.beginPath();
+        c.moveTo(x, y);
+        c.lineTo(...at((du - dv * spread) * L, (dv + du * spread) * L));
+        c.lineTo(...at((du + dv * spread) * L, (dv - du * spread) * L));
+        c.closePath();
+        c.fill();
+      }
+      const r = 5 + 9 * Math.max(0, facing);
+      const glow = c.createRadialGradient(x, y, 0, x, y, r);
+      glow.addColorStop(0, `rgba(255, 244, 200, ${0.35 + 0.5 * Math.max(0, facing)})`);
+      glow.addColorStop(1, 'rgba(255, 236, 170, 0)');
+      c.fillStyle = glow;
+      c.fillRect(x - r, y - r, 2 * r, 2 * r);
+      c.restore();
     }
 
     new ResizeObserver(() => { resize(); follow(Infinity); render(); }).observe(root);

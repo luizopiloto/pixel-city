@@ -547,6 +547,20 @@
   ],
   "tile": true
  },
+ "ground/water-a.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/water-b.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
  "beach/umbrella-red.png": {
   "size": [
    60,
@@ -627,6 +641,24 @@
    89
   ]
  },
+ "landmarks/lighthouse.png": {
+  "size": [
+   82,
+   183
+  ],
+  "anchor": [
+   41,
+   162
+  ],
+  "footprint": [
+   0.92,
+   0.92
+  ],
+  "lamp": [
+   0,
+   -139
+  ]
+ },
  "beach/rowboat.png": {
   "size": [
    56,
@@ -664,6 +696,16 @@
   ],
   "anchor": [
    24,
+   9
+  ]
+ },
+ "beach/pier-v.png": {
+  "size": [
+   88,
+   58
+  ],
+  "anchor": [
+   64,
    9
   ]
  },

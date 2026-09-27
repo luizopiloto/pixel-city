@@ -1570,6 +1570,79 @@ def pier(seed, length=1.0):
     return s
 
 
+def ring(s, r, z0, h, shader_for, n=20, cx=0.0, cy=0.0):
+    """Round wall: an n-sided prism of radius r from z0, h px tall. Each side
+    is lit by its facing; shader_for(k) gives side k's shader."""
+    pts = [(cx + r * math.cos(2 * math.pi * k / n), cy + r * math.sin(2 * math.pi * k / n)) for k in range(n)]
+    for k in range(n):
+        (xa, ya), (xb, yb) = pts[k], pts[(k + 1) % n]
+        t = 2 * math.pi * (k + 0.5) / n
+        light = 0.62 + 0.28 * max(0.0, math.sin(t)) + 0.12 * max(0.0, math.cos(t))
+        s.face((xa, ya, z0), (xb - xa, yb - ya, 0), (0, 0, h), shader_for(k), light=light)
+
+
+def disk(s, r, z, shader, n=20, cx=0.0, cy=0.0):
+    pts = [(r * math.cos(2 * math.pi * k / n), r * math.sin(2 * math.pi * k / n)) for k in range(n)]
+    for k in range(n):
+        (xa, ya), (xb, yb) = pts[k], pts[(k + 1) % n]
+        s.face((cx, cy, z), (xa, ya, 0), (xb, yb, 0), shader, tri=True)
+
+
+def lighthouse(seed):
+    """Classic lighthouse: stone plinth, a tapering white tower with red
+    bands, a gallery with a railing, the lit lantern and a red cap. Returns
+    the sprite and the lantern's height in px (the game draws the beam)."""
+    s = Sprite(140, 260, 70, 225, seed)
+    white, red, stone = rgb("#ddd6c8"), rgb("#8a3a32"), rgb("#9c9284")
+    # Plinth: two stone steps.
+    ring(s, 0.46, 0, 5, lambda k: flat(s, stone * 0.92, 6))
+    disk(s, 0.46, 5, flat(s, stone * 1.05, 6))
+    ring(s, 0.36, 5, 5, lambda k: flat(s, stone, 6))
+    disk(s, 0.36, 10, flat(s, stone * 1.1, 6))
+    # Tower: 10 px rings, narrowing from r0 to r1; bands of 20 px.
+    z, h, r0, r1 = 10, 120, 0.27, 0.19
+    for i in range(h // 10):
+        r = r0 + (r1 - r0) * i / (h // 10 - 1)
+        col = red if (i // 2) % 3 == 1 else white
+        ring(s, r, z + i * 10, 11, lambda k, col=col: flat(s, col, 5))       # 1 px overlap: no seams
+    zt = z + h
+    # Door and two small windows, facing the camera (+u +v).
+    c45 = math.sqrt(0.5)
+
+    def opening(zb, hgt, width, color):
+        rr = r0 + (r1 - r0) * (zb - z) / h + 0.01
+        s.face((c45 * rr + c45 * width / 2, c45 * rr - c45 * width / 2, zb), (-c45 * width, c45 * width, 0),
+               (0, 0, hgt), flat(s, color, 3), light=0.85)
+    opening(10, 16, 0.13, "#4f3423")
+    opening(58, 8, 0.07, "#2e3336")
+    opening(92, 8, 0.07, "#2e3336")
+    # Gallery: a wider deck with a thin railing.
+    disk(s, 0.28, zt, flat(s, "#5b5a5c", 4))
+    ring(s, 0.28, zt - 3, 3, lambda k: flat(s, "#4a494b", 3))
+    ring(s, 0.28, zt + 1, 1, lambda k: flat(s, "#2e3336", 2), n=24)
+    for k in range(12):
+        t = 2 * math.pi * k / 12
+        x, y = 0.27 * math.cos(t), 0.27 * math.sin(t)
+        s.box(x - 0.01, y - 0.01, zt, 0.02, 0.02, 7, flat(s, "#2e3336"), flat(s, "#2e3336"), flat(s, "#2e3336"))
+    ring(s, 0.28, zt + 6, 1, lambda k: flat(s, "#3e4048", 2), n=24)
+    # Lantern: lit glass between dark mullions, then the red cap and vent.
+    zl = zt + 2
+    glow = ramp("#f2c06a", "#f8dc98", "#fff0c4")
+
+    def glass(k):
+        def shader(a, b, xs, ys):
+            out = np.array(glow)[np.clip((b * 3).astype(int), 0, 2)]
+            return np.where((a < 0.18)[:, None], rgb("#2e3336"), out)
+        return shader
+    ring(s, 0.14, zl, 14, glass, n=10)
+    disk(s, 0.17, zl + 14, flat(s, "#6e2420"))
+    for i in range(6):                                           # cap: a stepped cone
+        ring(s, 0.16 - i * 0.026, zl + 14 + i * 2, 2, lambda k: flat(s, red, 4), n=12)
+    s.blob((0, 0, zl + 28), 2.2, ramp("#2e3336", "#4a494b", "#6e6e6e"))
+    s.outline(0.7)
+    return s, zl + 7
+
+
 def barrel(seed):
     s = Sprite(40, 50, 20, 40, seed)
     for z in range(0, 14, 2):
@@ -1591,14 +1664,17 @@ def buoy(seed):
 MANIFEST = {}
 
 
-def save(sprite, rel, **meta):
+def save(sprite, rel, mirror=False, **meta):
+    """Crop and save a sprite; mirror=True flips it, swapping its u and v."""
     path = OUT / rel
     path.parent.mkdir(parents=True, exist_ok=True)
-    img = sprite.image()
+    img, ox = sprite.image(), sprite.ox
+    if mirror:
+        img, ox = img.transpose(Image.FLIP_LEFT_RIGHT), img.width - sprite.ox
     bbox = img.getbbox()
     img = img.crop(bbox)
     img.save(path)
-    MANIFEST[rel] = {"size": list(img.size), "anchor": [round(sprite.ox - bbox[0], 1), round(sprite.oy - bbox[1], 1)], **meta}
+    MANIFEST[rel] = {"size": list(img.size), "anchor": [round(ox - bbox[0], 1), round(sprite.oy - bbox[1], 1)], **meta}
 
 
 def save_tile(img, rel):
@@ -1649,6 +1725,8 @@ def main():
                 continue
             name = sides + ("-" + "".join(corners) if corners else "")
             save_tile(shore(sides, corners, seed=70 + mask), f"ground/shore-{name}.png")
+    save_tile(shore("", seed=68), "ground/water-a.png")
+    save_tile(shore("", seed=69), "ground/water-b.png")
     # Beach
     save(umbrella(101, "#8a4a3e"), "beach/umbrella-red.png")
     save(umbrella(102, "#3f6f73"), "beach/umbrella-teal.png")
@@ -1658,10 +1736,13 @@ def main():
     save(towel(106, "#8f6f9a"), "beach/towel-purple.png")
     save(towel(107, "#3f6f73"), "beach/towel-teal.png")
     save(lifeguard(108), "beach/lifeguard-tower.png")
+    spr, lamp = lighthouse(140)
+    save(spr, "landmarks/lighthouse.png", footprint=[0.92, 0.92], lamp=[0, -lamp])
     save(rowboat(109, "#3f6f73"), "beach/rowboat.png")
     save(beach_hut(110, "#3f6f73"), "beach/hut-teal.png")
     save(beach_hut(111, "#8a4a3e"), "beach/hut-red.png")
     save(pier(112, 1.0), "beach/pier.png")
+    save(pier(112, 1.0), "beach/pier-v.png", mirror=True)             # along v
     save(barrel(113), "beach/barrel.png")
     save(buoy(114), "beach/buoy.png")
     # Suburb houses
