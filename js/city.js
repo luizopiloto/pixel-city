@@ -785,6 +785,20 @@
         if (rng() < 0.22) artProp(pick(rng() < 0.6 ? TREES : BUSHES), u + 0.2 + rng() * 0.6, v + 0.2 + rng() * 0.6);
         return false;
       });
+      // Grass meeting sand: dune tiles with grass creeping in from the green
+      // sides and corners (as for the shoreline below).
+      const sandy = new Set(sand.map(([u, v]) => key(u, v)));
+      const green = (u, v) => u >= 0 && v >= 0 && u < nu && v < nv && !sandy.has(key(u, v)) && !sea.has(key(u, v));
+      const dune = new Set();
+      for (const [u, v] of sand) {
+        const n = green(u - 1, v), e = green(u, v - 1), so = green(u + 1, v), w = green(u, v + 1);
+        const sides = (n ? 'n' : '') + (e ? 'e' : '') + (so ? 's' : '') + (w ? 'w' : '');
+        const corners = (!n && !e && green(u - 1, v - 1) ? 'ne' : '') + (!e && !so && green(u + 1, v - 1) ? 'es' : '') +
+          (!so && !w && green(u + 1, v + 1) ? 'sw' : '') + (!w && !n && green(u - 1, v + 1) ? 'wn' : '');
+        if (!sides && !corners) continue;
+        setGround(u, v, `art/ground/dune-${sides}${corners ? '-' + corners : ''}`);
+        dune.add(key(u, v));
+      }
       // Sea tiles: shoreline autotiles where they touch sand (sides n = -u,
       // e = -v, s = +u, w = +v; corners where only the diagonal is dry).
       const wet = (u, v) => u < 0 || v < 0 || u >= nu || v >= nv || sea.has(key(u, v));
@@ -876,6 +890,14 @@
           beachProp(pick(['beach/towel-purple.png', 'beach/towel-teal.png']), cu, cv);
           take(u, v);
         }
+      }
+      // Low dune plants: thick along the grass edge, thinning toward the sea.
+      const DUNE_PLANTS = ['marram', 'marram', 'marram-b', 'morning-glory', 'morning-glory', 'sea-daisy']
+        .map(n => `nature/dune/${n}.png`);
+      for (const [u, v, , d] of sand) {
+        if (taken.has(key(u, v))) continue;
+        const chance = dune.has(key(u, v)) ? 0.7 : d === 2 ? 0.3 : d === 3 ? 0.1 : 0.03;
+        for (let n = 0; n < 2 && rng() < chance; n++) beachProp(pick(DUNE_PLANTS), u + 0.15 + rng() * 0.7, v + 0.15 + rng() * 0.7);
       }
       // Buoys marking the swimming area, and a few boats, off the front beach.
       for (const k of sea) {

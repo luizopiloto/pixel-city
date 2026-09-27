@@ -599,6 +599,38 @@ def shore(sides, corners=(), seed=1):
     return tile_image(col)
 
 
+def dune(sides, corners=(), seed=1):
+    """Sand tile with grass creeping in from the given sides and outer
+    corners (as in shore()): an irregular edge with a shadow line, loose
+    sprouts on the sand beyond it."""
+    h, w = TILE_MASK.shape
+    rng = np.random.default_rng(seed)
+    u, v = uv_of_tile()
+    d = np.full((h, w), 9.0)
+    side = {"n": u, "s": 1 - u, "e": v, "w": 1 - v}
+    for k in sides:
+        d = np.minimum(d, side[k])
+    corner = {"ne": (0, 0), "es": (1, 0), "sw": (1, 1), "wn": (0, 1)}
+    for k in corners:
+        cu, cv = corner[k]
+        d = np.minimum(d, np.hypot(u - cu, v - cv) - 0.02)
+    d = d + (value_noise(h, w, 5, rng) - 0.5) * 0.3 + (value_noise(h, w, 2, rng) - 0.5) * 0.1
+    sand = np.array(ground(**SAND, seed=seed + 500))[..., :3].astype(float)
+    grass = np.array(ground(**GRASS, seed=seed + 600, tufts=18))[..., :3].astype(float)
+    reach = 0.34
+    patch = (value_noise(h, w, 3, rng) > 0.74) & (d < reach + 0.3)          # grass islands past the edge
+    col = np.where(((d < reach) | patch)[..., None], grass, sand)
+    rim = (d >= reach) & (d < reach + 0.035)                            # shadow under the grass edge
+    col[rim] = col[rim] * 0.86
+    for _ in range(70):                                                # sprouts out on the sand
+        x, y = rng.integers(3, w - 3), rng.integers(3, h - 3)
+        if TILE_MASK[y, x] and TILE_MASK[y - 2, x] and reach < d[y, x] < reach + 0.28 * rng.random():
+            col[y, x] = rgb(GRASS["light"]) * 1.1
+            col[y - 1, x] = rgb(GRASS["light"]) * 1.2
+            col[y, x + 1] = rgb(GRASS["dark"])
+    return tile_image(col)
+
+
 # ---------- buildings ----------
 
 def wall_shader(s, color, length_px, height_px, floors, windows, door=None, base=None,
@@ -1643,6 +1675,41 @@ def lighthouse(seed):
     return s, zl + 7
 
 
+def marram(seed):
+    """Dune grass: a tuft of thin, arching blades, green going straw."""
+    s = Sprite(40, 40, 20, 30, seed)
+    rng = np.random.default_rng(seed)
+    cols = [rgb("#6f7a2a"), rgb("#7f8a36"), rgb("#9a9a5a"), rgb("#b0a870")]
+    x0, y0 = s.proj(0, 0)
+    for _ in range(16):
+        ang = rng.uniform(-1.1, 1.1)
+        length = rng.uniform(7, 13)
+        c = cols[rng.integers(len(cols))]
+        for t in np.linspace(0, 1, 14):
+            x = x0 + math.sin(ang) * length * t + ang * 2.5 * t * t
+            y = y0 - math.cos(ang) * length * t + 3.5 * t * t * abs(ang)
+            xi, yi = int(round(x)), int(round(y))
+            s._write(np.array([True]), np.array([yi]), np.array([xi]), np.array([0.01 * t]), c[None] * (0.85 + 0.25 * t))
+    s.outline(0.8)
+    return s
+
+
+def creeper(seed, flower="#c77aa0", spread=0.2):
+    """Low creeping mat of round leaves (beach morning glory, sea daisy),
+    dotted with flowers."""
+    s = Sprite(60, 40, 30, 22, seed)
+    rng = np.random.default_rng(seed)
+    for _ in range(22):
+        a, r = rng.uniform(0, 2 * math.pi), spread * math.sqrt(rng.random())
+        s.blob((r * math.cos(a), r * math.sin(a), 2), rng.uniform(1.8, 2.8), LEAF["green"], squash=0.6, shade=0.1)
+    c = rgb(flower)
+    for _ in range(9):
+        a, r = rng.uniform(0, 2 * math.pi), spread * 0.9 * math.sqrt(rng.random())
+        s.blob((r * math.cos(a), r * math.sin(a), 4), 1.3, [c * 0.8, c, np.minimum(c * 1.25, 255)])
+    s.outline(0.85)
+    return s
+
+
 def barrel(seed):
     s = Sprite(40, 50, 20, 40, seed)
     for z in range(0, 14, 2):
@@ -1727,6 +1794,16 @@ def main():
             save_tile(shore(sides, corners, seed=70 + mask), f"ground/shore-{name}.png")
     save_tile(shore("", seed=68), "ground/water-a.png")
     save_tile(shore("", seed=69), "ground/water-b.png")
+    # Grass-to-sand transition: the same 47 combinations as the shoreline.
+    for mask in range(16):
+        sides = "".join(k for i, k in enumerate("nesw") if mask >> i & 1)
+        free = [c for c in ("ne", "es", "sw", "wn") if not set(c) & set(sides)]
+        for cm in range(1 << len(free)):
+            corners = [c for i, c in enumerate(free) if cm >> i & 1]
+            if not sides and not corners:
+                continue
+            name = sides + ("-" + "".join(corners) if corners else "")
+            save_tile(dune(sides, corners, seed=170 + mask), f"ground/dune-{name}.png")
     # Beach
     save(umbrella(101, "#8a4a3e"), "beach/umbrella-red.png")
     save(umbrella(102, "#3f6f73"), "beach/umbrella-teal.png")
@@ -1736,6 +1813,10 @@ def main():
     save(towel(106, "#8f6f9a"), "beach/towel-purple.png")
     save(towel(107, "#3f6f73"), "beach/towel-teal.png")
     save(lifeguard(108), "beach/lifeguard-tower.png")
+    save(marram(130), "nature/dune/marram.png")
+    save(marram(131), "nature/dune/marram-b.png")
+    save(creeper(132, "#c77aa0"), "nature/dune/morning-glory.png")
+    save(creeper(133, "#d8c060", spread=0.14), "nature/dune/sea-daisy.png")
     spr, lamp = lighthouse(140)
     save(spr, "landmarks/lighthouse.png", footprint=[0.92, 0.92], lamp=[0, -lamp])
     save(rowboat(109, "#3f6f73"), "beach/rowboat.png")

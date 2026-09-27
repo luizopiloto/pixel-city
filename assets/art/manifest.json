@@ -561,6 +561,328 @@
   ],
   "tile": true
  },
+ "ground/dune--ne.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--es.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--nees.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--sw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--nesw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--essw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--neessw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--wn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--newn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--eswn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--neeswn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--swwn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--neswwn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--esswwn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune--neesswwn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-n.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-n-es.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-n-sw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-n-essw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-e.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-e-sw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-e-wn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-e-swwn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-ne.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-ne-sw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-s.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-s-ne.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-s-wn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-s-newn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-ns.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-es.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-es-wn.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-nes.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-w.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-w-ne.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-w-es.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-w-nees.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-nw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-nw-es.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-ew.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-new.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-sw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-sw-ne.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-nsw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-esw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/dune-nesw.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
  "beach/umbrella-red.png": {
   "size": [
    60,
@@ -639,6 +961,46 @@
   "anchor": [
    39,
    89
+  ]
+ },
+ "nature/dune/marram.png": {
+  "size": [
+   20,
+   12
+  ],
+  "anchor": [
+   11,
+   11
+  ]
+ },
+ "nature/dune/marram-b.png": {
+  "size": [
+   27,
+   12
+  ],
+  "anchor": [
+   13,
+   11
+  ]
+ },
+ "nature/dune/morning-glory.png": {
+  "size": [
+   37,
+   19
+  ],
+  "anchor": [
+   18,
+   11
+  ]
+ },
+ "nature/dune/sea-daisy.png": {
+  "size": [
+   25,
+   16
+  ],
+  "anchor": [
+   11,
+   11
   ]
  },
  "landmarks/lighthouse.png": {
