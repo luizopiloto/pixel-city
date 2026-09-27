@@ -18,7 +18,7 @@ The container defaults to 16:9 at full width; size it however you need.
 | Option | Default | Description |
 | --- | --- | --- |
 | `data-zoom` | `2` | CSS pixels per art pixel. Read once, on load. |
-| `data-seed` | `7` | City layout seed. |
+| `data-seed` | random | Pins the city layout. Without it, every page load builds a new city. |
 | `data-assets` | `assets/` | Path to the assets folder. |
 | `data-tiltshift` | on | `"off"` removes the tilt-shift blur. |
 | `data-minimap` | — | Id of an element to hold the GPS phone. Without it, the phone sits in the bottom-right corner. |
@@ -32,8 +32,17 @@ The "Standalone preview only" rules at the end of `css/style.css` make
 python3 -m http.server 8080
 ```
 
-Then open http://localhost:8080. Add `?loading` to keep the loading screen
-up, or `?debug` to log how long each startup phase takes.
+Then open http://localhost:8080. URL switches for checking things:
+
+- `?seed=123`: build that city (the seed is logged with `?debug`)
+- `?look=u,v`: pin the camera on tile (u, v) instead of following the hero
+- `?loading`: keep the loading screen up
+- `?debug`: log startup phase times, the seed and chunk bakes
+
+`node tools/sim.js [seconds] [seed]` runs the real `js/city.js` headless:
+it reports the city (cells, size, lights, traffic loops, cars), checks that
+every road is connected, and runs the traffic to count close calls, stuck
+cars and `step()` time.
 
 ## Assets
 

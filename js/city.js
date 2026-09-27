@@ -14,15 +14,20 @@
  */
 (() => {
   const TW = 128, TH = 64, HW = TW / 2, HH = TH / 2;
-  const BLOCKS = 8, BLOCK = 3, PITCH = BLOCK + 1;
+  const BLOCK = 3, PITCH = BLOCK + 1;
   const ROAD0 = 1;                          // first road line (after the verge)
-  const ROADN = ROAD0 + BLOCKS * PITCH;     // last road line
-  const N = ROADN + 2;                      // grid is N × N tiles
   const TOP = 8;                            // headroom above the top tile
   const SLAB = 14;                          // soil edge under the island
-  const W = N * TW + 2;
-  const H = TOP + N * TH + SLAB + 2;
-  const OX = N * HW + 1;
+  // World size in tiles (NU × NV) and in px (W × H), set per generated city
+  // by setWorld(). OX is the screen x of tile (0, 0)'s top corner.
+  let NU = 0, NV = 0, W = 0, H = 0, OX = 0;
+  function setWorld(nu, nv) {
+    NU = nu;
+    NV = nv;
+    W = (nu + nv) * HW + 2;
+    H = TOP + (nu + nv) * HH + SLAB + 2;
+    OX = nv * HW + 1;
+  }
 
   const iso = (u, v) => [OX + (u - v) * HW, TOP + (u + v) * HH];
   const roadAt = k => ROAD0 + k * PITCH;    // road index → tile
@@ -68,14 +73,13 @@
 
   /* ---------- layout tuning ---------- */
 
-  // Regular 3×3 blocks, by template.
+  // Downtown: a compact random blob of DOWNTOWN_CELLS block cells, with
+  // SUPER_COUNT superblocks (3×2 / 2×3 cells merged, inner roads removed)
+  // and one long block (1×2, 1×3, 2×1 or 3×1 merged) per CELLS_PER_LONG cells.
+  const DOWNTOWN_CELLS = 256, SUPER_COUNT = 8, CELLS_PER_LONG = 16;
+  const LONG_SHAPES = [[1, 2], [1, 3], [2, 1], [3, 1]];
+  // Regular 3×3 blocks, by template (relative weights).
   const BLOCK_MIX = { twin: 12, row: 8, mixed: 8, plaza: 3, park: 7, canal: 2 };
-  // Superblocks, in blocks along u × v.
-  const SUPERBLOCKS = [[3, 2], [2, 3], [3, 2], [2, 3]];
-
-  // Old fixed hero route (road-index coords). No longer driven, but
-  // superblock placement still avoids it; removing it would change the city.
-  const HERO_ROUTE = [[0, 5], [2, 5], [2, 3], [5, 3], [5, 6], [7, 6]];
   // Hero routes: random walks that never turn back or revisit a crossing,
   // ROUTE_EDGES blocks long. At the end the hero parks for PARK_S seconds.
   const ROUTE_EDGES = [16, 24];
@@ -95,7 +99,7 @@
 
   /* ---------- traffic tuning ---------- */
 
-  const SIGNAL_COUNT = 8;
+  const CELLS_PER_SIGNAL = 8;              // one signalised crossing per this many cells
   const SIGNAL_CYCLE = [                   // seconds per phase
     { u: 'green', v: 'red', t: 6 }, { u: 'amber', v: 'red', t: 1.4 },
     { u: 'red', v: 'red', t: 0.8 }, { u: 'red', v: 'green', t: 6 },
@@ -103,7 +107,7 @@
   ];
   const CYCLE_T = SIGNAL_CYCLE.reduce((s, p) => s + p.t, 0);
 
-  const ROUTE_COUNT = 14;
+  const CELLS_PER_ROUTE = 4.5;             // one traffic loop per this many cells
   const TILES_PER_CAR = 24;  // traffic density along each loop
   const LANE = 0.23;         // lane offset from the road center line
   const TURN = 0.36;         // fillet radius at corners
@@ -182,36 +186,122 @@
       }
       return list;
     };
+    const key = (a, b) => a + ',' + b;
+    const NB4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
-    const heroTiles = tilesAlong(HERO_ROUTE);
-
-    // Superblocks: merged block groups that don't touch each other or the
-    // old route.
-    const supers = [];
-    for (const [bw, bh] of SUPERBLOCKS) {
-      for (let tries = 0; tries < 200; tries++) {
-        const bi = Math.floor(rng() * (BLOCKS - bw + 1));
-        const bj = Math.floor(rng() * (BLOCKS - bh + 1));
-        const s = { bi, bj, bw, bh,
-          u0: roadAt(bi) + 1, u1: roadAt(bi + bw), v0: roadAt(bj) + 1, v1: roadAt(bj + bh) };
-        const clash = supers.some(o =>
-          bi <= o.bi + o.bw && o.bi <= bi + bw && bj <= o.bj + o.bh && o.bj <= bj + bh);
-        const onRoute = heroTiles.some(([u, v]) => u >= s.u0 && u < s.u1 && v >= s.v0 && v < s.v1);
-        if (!clash && !onRoute) { supers.push(s); break; }
+    // Downtown: grow a blob of cells from the center. Frontier cells with
+    // more filled neighbors are likelier (compact shape); a smooth random
+    // field biases growth into lobes, so the outline is irregular.
+    const GRID = 48;
+    const field = (() => {
+      const g = [], n = GRID / 6 + 2;
+      for (let a = 0; a < n; a++) { g.push([]); for (let b = 0; b < n; b++) g[a].push(rng()); }
+      return (ci, cj) => {
+        const x = ci / 6, y = cj / 6, x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+        const top = g[x0][y0] * (1 - fx) + g[x0 + 1][y0] * fx;
+        const bot = g[x0][y0 + 1] * (1 - fx) + g[x0 + 1][y0 + 1] * fx;
+        return top * (1 - fy) + bot * fy;
+      };
+    })();
+    const cells = new Map();                     // 'i,j' → { i, j, type, sup }
+    const filled = (ci, cj) => cells.has(key(ci, cj));
+    const fill = (ci, cj, type) => cells.set(key(ci, cj), { i: ci, j: cj, type, sup: -1 });
+    fill(GRID >> 1, GRID >> 1, 'downtown');
+    while (cells.size < DOWNTOWN_CELLS) {
+      const front = new Map();
+      for (const c of cells.values()) {
+        for (const [di, dj] of NB4) {
+          const ni = c.i + di, nj = c.j + dj;
+          if (ni < 1 || nj < 1 || ni >= GRID - 1 || nj >= GRID - 1 || filled(ni, nj)) continue;
+          const n = NB4.filter(([a, b]) => filled(ni + a, nj + b)).length;
+          front.set(key(ni, nj), [ni, nj, n * n * (0.25 + field(ni, nj))]);
+        }
+      }
+      const opts = [...front.values()];
+      let r = rng() * opts.reduce((t, o) => t + o[2], 0);
+      const [ni, nj] = opts.find(o => (r -= o[2]) <= 0) || opts[opts.length - 1];
+      fill(ni, nj, 'downtown');
+    }
+    for (let again = true; again;) {             // fill enclosed gaps
+      again = false;
+      for (let ci = 1; ci < GRID - 1; ci++) for (let cj = 1; cj < GRID - 1; cj++) {
+        if (!filled(ci, cj) && NB4.filter(([a, b]) => filled(ci + a, cj + b)).length >= 3) {
+          fill(ci, cj, 'downtown');
+          again = true;
+        }
       }
     }
-    const inSuper = (u, v) => supers.some(s => u >= s.u0 && u < s.u1 && v >= s.v0 && v < s.v1);
-    const superOfBlock = (bi, bj) =>
-      supers.some(s => bi >= s.bi && bi < s.bi + s.bw && bj >= s.bj && bj < s.bj + s.bh);
+    // Crop the lattice to the cells in use.
+    const all = [...cells.values()];
+    const mi = Math.min(...all.map(c => c.i)), mj = Math.min(...all.map(c => c.j));
+    const cropped = new Map();
+    for (const c of all) { c.i -= mi; c.j -= mj; cropped.set(key(c.i, c.j), c); }
+    cells.clear();
+    for (const [k, c] of cropped) cells.set(k, c);
+    const IU = Math.max(...all.map(c => c.i)) + 1, IV = Math.max(...all.map(c => c.j)) + 1;
+    const cellAt = (ci, cj) => cells.get(key(ci, cj));
+    const nu = roadAt(IU) + 2, nv = roadAt(IV) + 2;
 
-    const isLine = t => t >= ROAD0 && t <= ROADN && (t - ROAD0) % PITCH === 0;
-    const isRoad = (u, v) =>
-      u >= ROAD0 && v >= ROAD0 && u <= ROADN && v <= ROADN &&
-      (isLine(u) || isLine(v)) && !inSuper(u, v);
+    // Merged blocks (their inner roads removed): first the 3×2 / 2×3
+    // superblocks, kept apart from each other, then the long 1×2 … 3×1
+    // blocks, which may sit beside other merged blocks but never overlap.
+    const supers = [];
+    function merge(count, shapes, apart) {
+      for (let tries = 0, placed = 0; placed < count && tries < 4000; tries++) {
+        const [bw, bh] = shapes[Math.floor(rng() * shapes.length)];
+        const bi = Math.floor(rng() * (IU - bw + 1)), bj = Math.floor(rng() * (IV - bh + 1));
+        let ok = true;
+        for (let a = bi - 1; a <= bi + bw && ok; a++) for (let b = bj - 1; b <= bj + bh && ok; b++) {
+          const c = cellAt(a, b), inside = a >= bi && a < bi + bw && b >= bj && b < bj + bh;
+          if (inside && (!c || c.type !== 'downtown' || c.sup >= 0)) ok = false;
+          if (apart && c && c.sup >= 0) ok = false;
+        }
+        if (!ok) continue;
+        const k = supers.length;
+        for (let a = bi; a < bi + bw; a++) for (let b = bj; b < bj + bh; b++) cellAt(a, b).sup = k;
+        supers.push({ bi, bj, bw, bh, u0: roadAt(bi) + 1, u1: roadAt(bi + bw), v0: roadAt(bj) + 1, v1: roadAt(bj + bh) });
+        placed++;
+      }
+    }
+    merge(SUPER_COUNT, [[3, 2], [2, 3]], true);
+    merge(Math.round(cells.size / CELLS_PER_LONG), LONG_SHAPES, false);
+
+    // Roads: a segment between two lattice nodes exists when a cell beside
+    // it is part of the city, unless both sides are the same superblock.
+    const roadSet = new Set();
+    const sameSuper = (a, b) => a && b && a.sup >= 0 && a.sup === b.sup;
+    for (let j = 0; j <= IV; j++) for (let i = 0; i < IU; i++) {     // along u
+      const a = cellAt(i, j - 1), b = cellAt(i, j);
+      if ((a || b) && !sameSuper(a, b)) {
+        for (let u = roadAt(i); u <= roadAt(i + 1); u++) roadSet.add(key(u, roadAt(j)));
+      }
+    }
+    for (let i = 0; i <= IU; i++) for (let j = 0; j < IV; j++) {     // along v
+      const a = cellAt(i - 1, j), b = cellAt(i, j);
+      if ((a || b) && !sameSuper(a, b)) {
+        for (let v = roadAt(j); v <= roadAt(j + 1); v++) roadSet.add(key(roadAt(i), v));
+      }
+    }
+    const isRoad = (u, v) => roadSet.has(key(u, v));
+
+    // Land: cells, roads and superblock interiors, plus a one-tile verge.
+    const core = new Set(roadSet);
+    for (const c of cells.values()) {
+      for (let du = 0; du < BLOCK; du++) for (let dv = 0; dv < BLOCK; dv++) {
+        core.add(key(roadAt(c.i) + 1 + du, roadAt(c.j) + 1 + dv));
+      }
+    }
+    for (const sb of supers) for (let u = sb.u0; u < sb.u1; u++) for (let v = sb.v0; v < sb.v1; v++) core.add(key(u, v));
+    const land = new Set(core);
+    for (const k of core) {
+      const [u, v] = k.split(',').map(Number);
+      for (let du = -1; du <= 1; du++) for (let dv = -1; dv <= 1; dv++) land.add(key(u + du, v + dv));
+    }
+    const isLand = (u, v) => land.has(key(u, v));
 
     const groundMap = new Map();
     const lots = [], props = [];
-    const setGround = (u, v, name, mode = 0) => groundMap.set(u + ',' + v, [name, mode]);
+    const setGround = (u, v, name, mode = 0) => groundMap.set(key(u, v), [name, mode]);
     const pave = (u, v, lu = BLOCK, lv = BLOCK) => {
       for (let du = 0; du < lu; du++) for (let dv = 0; dv < lv; dv++) setGround(u + du, v + dv, 'paving');
     };
@@ -225,17 +315,18 @@
     // Intersections with traffic lights: full crossings, spread apart.
     const signals = [];
     const candidates = [];
-    for (let i = 1; i < BLOCKS; i++) for (let j = 1; j < BLOCKS; j++) {
+    for (let i = 1; i < IU; i++) for (let j = 1; j < IV; j++) {
       const u = roadAt(i), v = roadAt(j);
-      if ([[1, 0], [-1, 0], [0, 1], [0, -1]].every(([du, dv]) => isRoad(u + du, v + dv))) candidates.push([i, j]);
+      if (NB4.every(([du, dv]) => isRoad(u + du, v + dv))) candidates.push([i, j]);
     }
     shuffle(candidates);
+    const signalCount = Math.round(cells.size / CELLS_PER_SIGNAL);
     for (const [i, j] of candidates) {
-      if (signals.length === SIGNAL_COUNT) break;
-      if (signals.some(s => Math.abs(s.i - i) + Math.abs(s.j - j) < 3)) continue;
+      if (signals.length === signalCount) break;
+      if (signals.some(sg => Math.abs(sg.i - i) + Math.abs(sg.j - j) < 3)) continue;
       signals.push({ i, j, u: roadAt(i), v: roadAt(j), offset: rng() * CYCLE_T });
     }
-    const signalAt = new Map(signals.map((s, k) => [s.u + ',' + s.v, k]));
+    const signalAt = new Map(signals.map((sg, k) => [key(sg.u, sg.v), k]));
 
     // Block templates. (u, v) is the block's top tile; offsets are in [0, 3).
     const T = {
@@ -291,9 +382,9 @@
 
     // Superblock: dense paved downtown in columns and rows of buildings.
     const ROW = 1.25;
-    function downtown(s) {
-      const lu = s.u1 - s.u0, lv = s.v1 - s.v0;
-      pave(s.u0, s.v0, lu, lv);
+    function downtown(sb) {
+      const lu = sb.u1 - sb.u0, lv = sb.v1 - sb.v0;
+      pave(sb.u0, sb.v0, lu, lv);
       const cols = [];
       let rest = lu;
       while (rest >= 1.5) {
@@ -302,9 +393,9 @@
         rest -= w;
       }
       const rows = Math.floor(lv / ROW);
-      const v0 = s.v0 + (lv - rows * ROW) / 2;
+      const v0 = sb.v0 + (lv - rows * ROW) / 2;
       for (let r = 0; r < rows; r++) {
-        let u = s.u0 + rest / 2;
+        let u = sb.u0 + rest / 2;
         const v = v0 + r * ROW;
         for (const w of cols) {
           if (rng() < 0.3) {
@@ -319,55 +410,52 @@
     }
 
     supers.forEach(downtown);
-    const free = [];
-    for (let bi = 0; bi < BLOCKS; bi++) {
-      for (let bj = 0; bj < BLOCKS; bj++) if (!superOfBlock(bi, bj)) free.push([bi, bj]);
-    }
-    const plan = Object.entries(BLOCK_MIX).flatMap(([k, n]) => Array(n).fill(k));
+    const free = [...cells.values()].filter(c => c.sup < 0);
+    const mix = Object.entries(BLOCK_MIX), total = mix.reduce((t, [, w]) => t + w, 0);
+    const plan = mix.flatMap(([k, w]) => Array(Math.round(w / total * free.length)).fill(k));
     while (plan.length < free.length) plan.push('row');
     shuffle(plan);
-    free.forEach(([bi, bj], k) => T[plan[k]](roadAt(bi) + 1, roadAt(bj) + 1));
+    free.forEach((c, k) => T[plan[k]](roadAt(c.i) + 1, roadAt(c.j) + 1));
 
-    // Verge along the two camera-facing edges.
-    for (let k = 2; k < N - 2; k += 3) {
-      prop(pick(PLANTERS), N - 0.5, k + rng());
-      prop(pick(PLANTERS), k + rng(), N - 0.5);
+    // Planters along the camera-facing verge.
+    for (const k of land) {
+      if (core.has(k)) continue;
+      const [u, v] = k.split(',').map(Number);
+      if ((!isLand(u + 1, v) || !isLand(u, v + 1)) && rng() < 0.3) prop(pick(PLANTERS), u + 0.5, v + 0.5);
     }
 
-    const nearSignal = (u, v) =>
-      [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([du, dv]) => signalAt.has((u + du) + ',' + (v + dv)));
+    const nearSignal = (u, v) => NB4.some(([du, dv]) => signalAt.has(key(u + du, v + dv)));
 
     function ground(u, v) {
       if (isRoad(u, v)) {
-        let key = '';
-        if (isRoad(u - 1, v)) key += 'n';
-        if (isRoad(u, v - 1)) key += 'e';
-        if (isRoad(u + 1, v)) key += 's';
-        if (isRoad(u, v + 1)) key += 'w';
-        if ((key === 'ns' || key === 'ew') && nearSignal(u, v)) key += 'x';
-        return ROAD_TILES[key];
+        let k = '';
+        if (isRoad(u - 1, v)) k += 'n';
+        if (isRoad(u, v - 1)) k += 'e';
+        if (isRoad(u + 1, v)) k += 's';
+        if (isRoad(u, v + 1)) k += 'w';
+        if ((k === 'ns' || k === 'ew') && nearSignal(u, v)) k += 'x';
+        return ROAD_TILES[k];
       }
-      return groundMap.get(u + ',' + v) || ['grass', 0];
+      if (!isLand(u, v)) return null;
+      return groundMap.get(key(u, v)) || ['grass', 0];
     }
 
-    // Traffic loops: rectangles on the remaining road grid, either direction.
+    // Traffic loops: random rectangles on the road lattice, either direction.
     const loopOk = loop => tilesAlong([...loop, loop[0]]).every(([u, v]) => isRoad(u, v));
-    const routes = [
-      [[0, 0], [BLOCKS, 0], [BLOCKS, BLOCKS], [0, BLOCKS]],
-      [[0, 0], [0, BLOCKS], [BLOCKS, BLOCKS], [BLOCKS, 0]],
-    ];
-    for (let tries = 0; routes.length < ROUTE_COUNT && tries < 500; tries++) {
-      const i0 = Math.floor(rng() * BLOCKS), j0 = Math.floor(rng() * BLOCKS);
-      const i1 = Math.min(BLOCKS, i0 + 1 + Math.floor(rng() * 4));
-      const j1 = Math.min(BLOCKS, j0 + 1 + Math.floor(rng() * 4));
+    const routes = [];
+    const routeCount = Math.round(cells.size / CELLS_PER_ROUTE);
+    for (let tries = 0; routes.length < routeCount && tries < 20000; tries++) {
+      const i0 = Math.floor(rng() * IU), j0 = Math.floor(rng() * IV);
+      const i1 = Math.min(IU, i0 + 1 + Math.floor(rng() * 4));
+      const j1 = Math.min(IV, j0 + 1 + Math.floor(rng() * 4));
       const loop = [[i0, j0], [i1, j0], [i1, j1], [i0, j1]];
       if (loopOk(loop)) routes.push(rng() < 0.5 ? loop : loop.reverse());
     }
 
     const toTiles = r => r.map(([i, j]) => [roadAt(i), roadAt(j)]);
     return {
-      ground, isRoad, lots, props, signals, signalAt, rng, pick,
-      routes: routes.map(toTiles),
+      ground, isRoad, isLand, lots, props, signals, signalAt, rng, pick,
+      routes: routes.map(toTiles), NU: nu, NV: nv, IU, IV, cells: cells.size,
     };
   }
 
@@ -586,8 +674,10 @@
   }
 
   // Soil edge under the two camera-facing sides of the island.
-  function drawSlab(ctx, xMin = -Infinity, xMax = Infinity) {
-    const [lx, ly] = iso(0, N), [bx, by] = iso(N, N), [rx] = iso(N, 0);
+  // Soil edge under a land tile's camera-facing sides that border the void
+  // (sw: its +v side, se: its +u side), clipped to [xMin, xMax).
+  function drawSlab(ctx, u, v, sw, se, xMin = -Infinity, xMax = Infinity) {
+    const [tx, ty] = iso(u, v);
     const side = (x0, x1, y0, slope, fill, lip) => {
       for (let x = Math.max(x0, Math.floor(xMin)); x < Math.min(x1, Math.ceil(xMax)); x++) {
         const y = Math.round(y0 + (x - x0) * slope);
@@ -597,9 +687,10 @@
         ctx.fillRect(x, y + 2, 1, SLAB - 2);
       }
     };
-    side(lx, bx, ly, 0.5, '#5b4a31', '#4d5a1f');
-    side(bx, rx, by, -0.5, '#46382a', '#3f4a1a');
+    if (sw) side(tx - HW, tx, ty + HH, 0.5, '#5b4a31', '#4d5a1f');
+    if (se) side(tx, tx + HW, ty + TH, -0.5, '#46382a', '#3f4a1a');
   }
+
 
   // Floating diamond marker. `spin` in [0, 1) turns it about its vertical axis.
   const GEM_HALF = [0, 1, 2, 3, 4, 5, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 1, 1, 0];
@@ -712,7 +803,7 @@
   const nodeTile = ([i, j]) => [roadAt(i), roadAt(j)];
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const edgeOk = (a, b) => {
-    if (b[0] < 0 || b[1] < 0 || b[0] > BLOCKS || b[1] > BLOCKS) return false;
+    if (b[0] < 0 || b[1] < 0 || b[0] > city.IU || b[1] > city.IV) return false;
     const [u0, v0] = nodeTile(a), [u1, v1] = nodeTile(b);
     const du = Math.sign(u1 - u0), dv = Math.sign(v1 - v0);
     for (let u = u0, v = v0; ; u += du, v += dv) {
@@ -758,7 +849,7 @@
   }
   const firstSpot = (() => {
     for (let tries = 0; tries < 500; tries++) {
-      const a = [Math.floor(city.rng() * (BLOCKS + 1)), Math.floor(city.rng() * (BLOCKS + 1))];
+      const a = [Math.floor(city.rng() * (city.IU + 1)), Math.floor(city.rng() * (city.IV + 1))];
       const o = city.pick(DIRS), b = [a[0] + o[0], a[1] + o[1]];
       if (edgeOk(a, b)) return spotOn(a, b);
     }
@@ -792,7 +883,13 @@
     const img = {};
     await Promise.all([...srcs].map(async s => { img[s] = await load(base, s); }));
     await phase('images');
-    const city = generate(mulberry32(Number(root.dataset.seed || 7)));
+    // A new city on every load, unless data-seed pins one.
+    const urlSeed = new URLSearchParams(location.search).get('seed');
+    const seed = root.dataset.seed ? Number(root.dataset.seed)
+      : urlSeed ? Number(urlSeed) : Math.floor(Math.random() * 2 ** 31);
+    const city = generate(mulberry32(seed));
+    setWorld(city.NU, city.NV);
+    if (debug) console.log(`pixel-city: seed ${seed}, ${city.cells} cells, ${city.NU}×${city.NV} tiles`);
     await phase('generate');
 
     const canvas = document.createElement('canvas');
@@ -817,20 +914,22 @@
 
     // Ground tiles whose diamond overlaps a screen rect, back to front.
     function drawGround(g, [x, y, w, h]) {
-      drawSlab(g, x, x + w);
       const uv = (px, py) => [((px - OX) / HW + (py - TOP) / HH) / 2, ((py - TOP) / HH - (px - OX) / HW) / 2];
       const pts = [uv(x, y), uv(x + w, y), uv(x, y + h), uv(x + w, y + h)];
       const u0 = Math.max(0, Math.floor(Math.min(...pts.map(p => p[0]))) - 1);
-      const u1 = Math.min(N - 1, Math.ceil(Math.max(...pts.map(p => p[0]))) + 1);
+      const u1 = Math.min(NU - 1, Math.ceil(Math.max(...pts.map(p => p[0]))) + 1);
       const v0 = Math.max(0, Math.floor(Math.min(...pts.map(p => p[1]))) - 1);
-      const v1 = Math.min(N - 1, Math.ceil(Math.max(...pts.map(p => p[1]))) + 1);
+      const v1 = Math.min(NV - 1, Math.ceil(Math.max(...pts.map(p => p[1]))) + 1);
       for (let d = u0 + v0; d <= u1 + v1; d++) {
         for (let u = Math.max(u0, d - v1); u <= Math.min(u1, d - v0); u++) {
           const v = d - u;
           const [tx, ty] = iso(u, v);
-          if (tx + HW + 1 < x || tx - HW - 1 > x + w || ty + TH + 1 < y || ty > y + h) continue;
-          const [name, mode] = city.ground(u, v);
-          drawTile(g, img[`tiles/${name}.png`], u, v, mode);
+          if (tx + HW + 1 < x || tx - HW - 1 > x + w || ty + TH + SLAB + 1 < y || ty > y + h) continue;
+          const gr = city.ground(u, v);
+          if (!gr) continue;
+          const sw = !city.isLand(u, v + 1), se = !city.isLand(u + 1, v);
+          if (sw || se) drawSlab(g, u, v, sw, se, x, x + w);
+          drawTile(g, img[`tiles/${gr[0]}.png`], u, v, gr[1]);
         }
       }
     }
@@ -1063,19 +1162,35 @@
 
     // [distance the car may still drive before yielding to crossing or
     // merging traffic (Infinity if it needn't), the car it yields to].
+    // Each car's path sampled every 0.1 tiles from 0.6 behind to 3 ahead,
+    // once per step (car.probe), with its bounding box for quick rejects.
+    function probe(car) {
+      const pts = [];
+      let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity;
+      for (let k = -6; k <= 30; k++) {
+        const p = pointAhead(car, k / 10);
+        pts.push([k / 10, p]);
+        u0 = Math.min(u0, p[0]); u1 = Math.max(u1, p[0]); v0 = Math.min(v0, p[1]); v1 = Math.max(v1, p[1]);
+      }
+      car.probe = { pts, mine: pts.slice(7, 23), box: [u0, u1, v0, v1] };   // mine: 0.1 .. 1.6 ahead
+    }
+
     function crossGap(car) {
       let gap = Infinity, who = null;
-      const mine = [];
-      for (let t = 0.1; t <= 1.6; t += 0.1) mine.push([t, pointAhead(car, t)]);
-      for (const o of cars) {
+      const { mine } = car.probe;
+      let mu0 = Infinity, mu1 = -Infinity, mv0 = Infinity, mv1 = -Infinity;
+      for (const [, p] of mine) {
+        mu0 = Math.min(mu0, p[0]); mu1 = Math.max(mu1, p[0]); mv0 = Math.min(mv0, p[1]); mv1 = Math.max(mv1, p[1]);
+      }
+      for (const o of nearby(car)) {
         if (o === car || o.parked > 0 || o.atLight) continue;
-        if (Math.abs(o.pos[0] - car.pos[0]) > 3.5 || Math.abs(o.pos[1] - car.pos[1]) > 3.5) continue;
+        const [ou0, ou1, ov0, ov1] = o.probe.box;
+        if (ou0 > mu1 + 0.3 || ou1 < mu0 - 0.3 || ov0 > mv1 + 0.3 || ov1 < mv0 - 0.3) continue;
         // Conflict point: the first point on the car's path that o's path
         // comes within 0.3 of, t ahead of the car and s ahead of o (negative:
         // o is already over it).
         let t = 0, s = 0, best = 0.3;
-        const theirs = [];
-        for (let so = -0.6; so <= 3; so += 0.1) theirs.push([so, pointAhead(o, so)]);
+        const theirs = o.probe.pts;
         for (const [tc, p] of mine) {
           for (const [so, q] of theirs) {
             const d = Math.hypot(p[0] - q[0], p[1] - q[1]);
@@ -1105,7 +1220,7 @@
     function mergeGap(car) {
       if (!car.hero || car.s > PULL || car.speed > 0.2) return Infinity;
       const h = car.head;
-      for (const o of cars) {
+      for (const o of nearby(car)) {
         if (o === car || h[0] * o.head[0] + h[1] * o.head[1] < 0.5) continue;
         const du = o.pos[0] - car.pos[0], dv = o.pos[1] - car.pos[1];
         const back = -(du * h[0] + dv * h[1]), side = Math.abs(du * h[1] - dv * h[0]);
@@ -1116,12 +1231,34 @@
       return Infinity;
     }
 
+    // Cars bucketed by BUCKET-tile squares each step, so a car only checks
+    // the cars in its own and the eight surrounding buckets (all interactions
+    // reach at most 3.5 tiles).
+    const BUCKET = 4;
+    let buckets = new Map();
+    const bucketKey = (u, v) => Math.floor(u / BUCKET) + ',' + Math.floor(v / BUCKET);
+    function nearby(car) {
+      const bu = Math.floor(car.pos[0] / BUCKET), bv = Math.floor(car.pos[1] / BUCKET), out = [];
+      for (let a = bu - 1; a <= bu + 1; a++) for (let b = bv - 1; b <= bv + 1; b++) {
+        const list = buckets.get(a + ',' + b);
+        if (list) for (const o of list) out.push(o);
+      }
+      return out;
+    }
+
     function step(dt) {
       clock += dt;
+      buckets = new Map();
+      for (const car of cars) {
+        const k = bucketKey(car.pos[0], car.pos[1]);
+        if (!buckets.has(k)) buckets.set(k, []);
+        buckets.get(k).push(car);
+        probe(car);
+      }
       for (const c of conflicts.values()) c.seen = false;
       for (const car of cars) {
         let gap = Infinity, atLight = false, blocker = null;
-        for (const o of cars) {
+        for (const o of nearby(car)) {
           if (o === car || o.parked > 0) continue;     // the parked hero is at the curb
           const ahead = aheadOf(car, o);
           if (ahead < 0 || ahead - GAP >= gap || breaksLoop(car, o, 'body')) continue;
@@ -1196,7 +1333,7 @@
       grass: '#1b2a25', paving: '#262f3f', water: '#1f3552', lot: '#2c3548', road: '#46526b',
       ahead: '#ff4e00', behind: '#b8c1d3', car: '#ffffff', carEdge: '#0e1320',
     };
-    const mmX = (u, v) => 1 + MM_HW * (N + u - v);
+    const mmX = (u, v) => 1 + MM_HW * (NV + u - v);
     const mmY = (u, v) => 1 + MM_HH * (u + v);
     const canvasOf = (w, h) => {
       const c = document.createElement('canvas');
@@ -1227,15 +1364,17 @@
 
     // The whole city at map scale, drawn once.
     const mmMap = (() => {
-      const c = canvasOf(Math.ceil(2 * N * MM_HW) + 2, Math.ceil(2 * N * MM_HH) + 2);
+      const c = canvasOf(Math.ceil((NU + NV) * MM_HW) + 2, Math.ceil((NU + NV) * MM_HH) + 2);
       const px = painter(c.getContext('2d'));
       const lotAt = new Set();
       for (const [, u0, u1, v0, v1] of city.lots) {
         for (let u = Math.floor(u0); u < Math.ceil(u1); u++) for (let v = Math.floor(v0); v < Math.ceil(v1); v++) lotAt.add(u + ',' + v);
       }
-      for (let u = 0; u < N; u++) {
-        for (let v = 0; v < N; v++) {
-          const [name] = city.ground(u, v);
+      for (let u = 0; u < NU; u++) {
+        for (let v = 0; v < NV; v++) {
+          const gr = city.ground(u, v);
+          if (!gr) continue;                             // off the island
+          const name = gr[0];
           const color = lotAt.has(u + ',' + v) ? MM_C.lot
             : name === 'grass' ? MM_C.grass
             : name === 'paving' ? MM_C.paving
@@ -1386,8 +1525,10 @@
     }
 
     const heroScreen = () => iso(hero.pos[0], hero.pos[1]);
+    // ?look=u,v pins the camera on a tile (for checking parts of the city).
+    const look = (new URLSearchParams(location.search).get('look') || '').split(',').map(Number);
     function follow(dt) {
-      const [tx, ty] = heroScreen();
+      const [tx, ty] = look.length === 2 && look.every(Number.isFinite) ? iso(look[0], look[1]) : heroScreen();
       const k = dt === Infinity ? 1 : 1 - Math.exp(-dt * 1.2);
       view.camX += (tx - view.camX) * k;
       view.camY += (ty - 40 - view.camY) * k;
@@ -1491,6 +1632,8 @@
       requestAnimationFrame(frame);
     }
     await phase('scene');
+    // Test hook (tools/sim.js): hands the running city to a callback.
+    if (typeof root.__pixelCityHook === 'function') root.__pixelCityHook({ city, cars, step, seed });
     resize();
     follow(Infinity);
     render();
