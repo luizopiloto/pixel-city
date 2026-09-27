@@ -52,6 +52,17 @@ BUILDINGS = {
     "tower-bare":  ("buildings-2.png", (229, 251, 128, 120)),
 }
 
+# Plated buildings with their pavement pad erased but the lamps, benches,
+# planters and cafe tables drawn on it kept. The pad is the PAD grays outside
+# the building, whose shape is the bare twin at (x, y) in the plated sprite.
+DRESSED = {
+    "tower":  ("building-tower.png",  "buildings/tower-bare.png",  (40, 4)),
+    "corner": ("building-corner.png", "buildings/corner-bare.png", (24, 4)),
+    "house":  ("building-house.png",  "building-small.png",        (36, 4)),
+    "cafe":   ("building-cafe.png",   "building-modern.png",       (36, 4)),
+}
+PAD = {"666567", "5b5a5c", "636364", "59595a", "575757", "434343"}
+
 VEHICLES = ["carDefault", "carSedan", "carYellow"]
 CAR_BOX = (78, 54, 234, 172)      # common crop over all 12 frames
 CAR_SCALE = 0.34
@@ -70,6 +81,40 @@ SUPRA_BOX = (32, 28, 73, 41)      # x, y, w, h at 1x
 def crop(sheet, box):
     x, y, w, h = box
     return Image.open(A / sheet).convert("RGBA").crop((x, y, x + w, y + h))
+
+
+def dressed(plated, bare, at):
+    """`plated` without its pad; same size, so the same base point."""
+    im = Image.open(A / plated).convert("RGBA")
+    twin = Image.open(A / bare).convert("RGBA")
+    twin = twin.crop(twin.getbbox())
+    inside = Image.new("L", im.size)
+    inside.paste(twin.getchannel("A"), at)
+    px, keep = im.load(), inside.load()
+    for y in range(im.height):
+        for x in range(im.width):
+            if px[x, y][3] and not keep[x, y] and hexof(px[x, y]) in PAD:
+                px[x, y] = (0, 0, 0, 0)
+    # Drop specks of pad texture left behind (under 3 connected pixels).
+    seen = set()
+    for y in range(im.height):
+        for x in range(im.width):
+            if not px[x, y][3] or keep[x, y] or (x, y) in seen:
+                continue
+            blob, stack = [], [(x, y)]
+            seen.add((x, y))
+            while stack:
+                cx, cy = stack.pop()
+                blob.append((cx, cy))
+                for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                    if 0 <= nx < im.width and 0 <= ny < im.height and (nx, ny) not in seen \
+                            and px[nx, ny][3] and not keep[nx, ny]:
+                        seen.add((nx, ny))
+                        stack.append((nx, ny))
+            if len(blob) < 3:
+                for p in blob:
+                    px[p] = (0, 0, 0, 0)
+    return im
 
 
 def hexof(px):
@@ -274,6 +319,8 @@ def main():
     (A / "buildings").mkdir(exist_ok=True)
     for name, (sheet, box) in BUILDINGS.items():
         crop(sheet, box).save(A / "buildings" / f"{name}.png")
+    for name, (plated, bare, at) in DRESSED.items():
+        dressed(plated, bare, at).save(A / "buildings" / f"{name}-dressed.png")
     for name, (sheet, box) in TILES.items():
         crop(sheet, box).save(A / "tiles" / f"{name}.png")
     for name, (sheet, box) in PROPS.items():

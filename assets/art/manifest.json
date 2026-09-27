@@ -161,12 +161,12 @@
  },
  "nature/flowers/flower-bed.png": {
   "size": [
-   96,
-   44
+   34,
+   20
   ],
   "anchor": [
-   48,
-   20
+   17,
+   12
   ]
  },
  "ground/grass-a.png": {

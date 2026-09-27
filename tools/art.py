@@ -472,18 +472,38 @@ def rocks(seed=1, size=1.0):
     return s
 
 
-def flower_bed(seed=1):
-    """Low bed of soil with flowers, 1 × 0.5 tiles."""
-    s = Sprite(110, 70, 55, 20, seed)
+def flower_bed(seed=1, rx=0.22, ry=0.15):
+    """Small rounded bed: a low stone rim around soil, packed with leaves and
+    flowers. rx, ry: half-size in tiles along u, v."""
+    s = Sprite(80, 50, 40, 22, seed)
     rng = np.random.default_rng(seed)
-    s.box(-0.5, -0.25, 0, 1.0, 0.5, 5, flat(s, "#3e2c22", 10), flat(s, "#4d4a47"), flat(s, "#3e3c3a"))
-    for _ in range(46):
-        x, y = rng.uniform(-0.45, 0.45), rng.uniform(-0.2, 0.2)
-        s.blob((x, y, 7), rng.uniform(1.6, 2.6), LEAF["green"], shade=0.1)
-    for _ in range(40):
-        x, y = rng.uniform(-0.45, 0.45), rng.uniform(-0.2, 0.2)
+    n, rim = 20, 3
+    ring = [(rx * math.cos(2 * math.pi * k / n), ry * math.sin(2 * math.pi * k / n)) for k in range(n)]
+    stone = rgb("#9c9284")
+    for k in range(n):                                          # rim wall, lit by its facing
+        (xa, ya), (xb, yb) = ring[k], ring[(k + 1) % n]
+        t = 2 * math.pi * (k + 0.5) / n
+        light = 0.62 + 0.3 * max(0.0, 0.45 * math.cos(t) + 0.9 * math.sin(t))
+        s.face((xa, ya, 0), (xb - xa, yb - ya, 0), (0, 0, rim), flat(s, stone, 6), light=light)
+    for k in range(n):                                          # rim top, then soil inset
+        (xa, ya), (xb, yb) = ring[k], ring[(k + 1) % n]
+        s.face((0, 0, rim), (xa, ya, 0), (xb, yb, 0), flat(s, stone * 1.12, 5), tri=True)
+    for k in range(n):
+        (xa, ya), (xb, yb) = ring[k], ring[(k + 1) % n]
+        s.face((0, 0, rim), (xa * 0.8, ya * 0.8, 0), (xb * 0.8, yb * 0.8, 0), flat(s, "#3e2c22", 10), tri=True)
+
+    def spot():
+        while True:
+            x, y = rng.uniform(-0.75, 0.75, 2)
+            if x * x + y * y < 0.5:
+                return x * rx, y * ry
+    for _ in range(26):
+        x, y = spot()
+        s.blob((x, y, rim + 2), rng.uniform(1.8, 2.6), LEAF["green"], shade=0.1)
+    for _ in range(26):
+        x, y = spot()
         c = FLOWERS[rng.integers(len(FLOWERS))]
-        s.blob((x, y, 9), 1.3, [c * 0.8, c, np.minimum(c * 1.2, 255)])
+        s.blob((x, y, rim + 3), 1.3, [c * 0.8, c, np.minimum(c * 1.2, 255)])
     s.outline()
     return s
 

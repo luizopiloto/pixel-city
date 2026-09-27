@@ -47,13 +47,19 @@
   /* ---------- sprites ---------- */
 
   // `base`: bottom corner of the footprint in sprite px. `a`/`b`: footprint
-  // in tiles along u / v.
+  // in tiles along u / v. Dressed sprites keep the lamps, benches and tables
+  // of the plated originals, without their pavement pad (tools/bake.py).
   const BUILDINGS = {
+    tower:   { src: 'buildings/tower-dressed.png',  base: [126, 153],   a: 1.906, b: 1.156 },
+    corner:  { src: 'buildings/corner-dressed.png', base: [110.5, 147], a: 1.664, b: 1.039 },
+    house:   { src: 'buildings/house-dressed.png',  base: [118, 154],   a: 1.781, b: 1.062 },
+    cafe:    { src: 'buildings/cafe-dressed.png',   base: [118, 134],   a: 1.781, b: 1.062 },
     kiosk:   { src: 'building-modern.png',       base: [90, 114],    a: 1.344, b: 0.656 },
     cottage: { src: 'building-small.png',        base: [90, 135],    a: 1.344, b: 0.656 },
     flats:   { src: 'buildings/corner-bare.png', base: [86, 128],    a: 1.344, b: 0.656 },
     office:  { src: 'buildings/tower-bare.png',  base: [86, 128],    a: 1.344, b: 0.656 },
   };
+  const DRESSED = ['tower', 'corner', 'house', 'cafe'];
   const BARE = ['kiosk', 'cottage', 'flats', 'office'];
 
   // Ground contact point of each prop, in sprite pixels.
@@ -87,8 +93,6 @@
   const PLAZA_BUILDINGS = ['buildings/shop-6.png', 'buildings/shop-7.png', 'buildings/fastfood.png',
     'buildings/apartment-1.png', 'buildings/apartment-2.png'];
   const DOWNTOWN_ART = ['buildings/shop-7.png', 'buildings/brick-3.png', 'buildings/office-5.png'];
-  // Larger buildings for a block's back row or a wide downtown lot.
-  const BIG_ART = ['buildings/apartment-1.png', 'buildings/brick-3.png', 'buildings/office-5.png'];
   const TREES = ['oak', 'oak-small', 'maple', 'birch', 'olive', 'pine', 'pine-small'].map(n => `nature/trees/${n}.png`);
   const BUSHES = ['bush', 'bush-small', 'bush-flowers', 'shrub'].map(n => `nature/bushes/${n}.png`);
   const GRASSES = ['grass-a', 'grass-a', 'grass-b', 'grass-lush', 'grass-flowers'].map(n => `art/ground/${n}`);
@@ -408,9 +412,8 @@
       twin(u, v) {
         // Back building against the block's back edge, front one on the
         // street, so the back one's entrance faces open ground.
-        const [p0, p1] = shuffle([...BIG_ART]), b0 = fp(p0)[1], b1 = fp(p1)[1];
-        artLot(p0, u + 1.5, v + 0.1 + b0 / 2);
-        artLot(p1, u + 1.5, v + 2.9 - b1 / 2);
+        const p = shuffle([...DRESSED]), b0 = BUILDINGS[p[0]].b, b1 = BUILDINGS[p[1]].b;
+        lots.push([p[0], u, u + 3, v + 0.06, v + 0.06 + b0], [p[1], u, u + 3, v + 2.94 - b1, v + 2.94]);
         prop(pick(PLANTERS), u + 0.22, v + 0.4 + rng() * 2.2);
         if (rng() < 0.6) prop('lamp.png', u + 2.8, v + 0.18);
       },
@@ -424,8 +427,8 @@
       },
       mixed(u, v) {
         pave(u, v);
-        const back = pick(BIG_ART);
-        artLot(back, u + 1.5, v + 0.1 + fp(back)[1] / 2);
+        const back = pick(DRESSED), b0 = BUILDINGS[back].b;
+        lots.push([back, u, u + 3, v + 0.06, v + 0.06 + b0]);
         lots.push([pick(BARE), u, u + 1.5, v + 1.5, v + 3], [pick(BARE), u + 1.5, u + 3, v + 1.5, v + 3]);
       },
       park(u, v) {
@@ -449,7 +452,7 @@
       },
       plaza(u, v) {
         pave(u, v);
-        lots.push([pick(['kiosk', 'office']), u, u + 3, v + 0.25, v + 1.75]);
+        lots.push([pick(['cafe', 'tower']), u, u + 3, v + 0.25, v + 1.75]);
         prop('props/bench-ne.png', u + 0.7, v + 2.5);
         prop('props/bench-ne.png', u + 2.1, v + 2.5);
         prop('props/bin-gray.png', u + 1.45, v + 2.75);
@@ -483,8 +486,7 @@
             prop(pick(PLANTERS), u + w / 2 - 0.3, v + 0.4);
             prop('props/bench-ne.png', u + w / 2 + 0.2, v + 0.75);
           } else {
-            if (w > 2) { const n = pick(BIG_ART); artLot(n, u + w / 2, v + ROW - 0.05 - fp(n)[1] / 2); }
-            else lots.push([pick(BARE), u, u + w, v, v + ROW]);
+            lots.push([w > 2 ? pick(DRESSED) : pick(BARE), u, u + w, v, v + ROW]);
           }
           u += w;
         }
@@ -572,7 +574,10 @@
           const cv = v + 3 - (name === 'houses/diner.png' ? 1.25 : 0.5) - b / 2 - rng() * 0.2;
           artLot(name, cu, cv, c.district);
           back = Math.min(back, cv - b / 2);
-          if (rng() < 0.35 && !wide) artProp('nature/flowers/flower-bed.png', su + (k ? 1.3 : 0.2), cv + b / 2 + 0.25);
+          if (rng() < 0.35 && !wide) {                  // at the outer front corner, inside the lot
+            const fu = Math.min(Math.max(cu + (k ? 0.62 : -0.62), su + 0.3), su + slot - 0.3);
+            artProp('nature/flowers/flower-bed.png', fu, cv + b / 2 + 0.2);
+          }
         });
         if (back - v > 0.6) scatter(u, v, 3, back - v - 0.15, 2 + Math.floor(rng() * 3), [...TREES, ...BUSHES], () => false, 0.55);
         continue;
