@@ -657,7 +657,9 @@ def wall_shader(s, color, length_px, height_px, floors, windows, door=None, base
                     cx, hw = (p0 + p1) / 2, min((p1 - p0) / 2, 5.5)   # arch fits the floor
                     dx, dz = along - cx, z - zr
                     inw = ((np.abs(dx) < hw) & (z >= z0) & (z < zr)) | ((z >= zr) & (dx * dx + dz * dz < hw * hw))
-                    inner = ((np.abs(dx) < hw - 1) & (z >= z0 + 1) & (z < zr)) | \
+                    # Frame sides 1.2 wall px thick: a wall px is under one screen
+                    # px, so a 1 px side could fall between pixel centers.
+                    inner = ((np.abs(dx) < hw - 1.2) & (z >= z0 + 1) & (z < zr)) | \
                             ((z >= zr) & (dx * dx + dz * dz < (hw - 1) ** 2))
                     ring = (z >= zr - 0.5) & (dx * dx + dz * dz < (hw + 1.4) ** 2) & ~inw
                     zmid = (z0 + zr + hw) / 2
