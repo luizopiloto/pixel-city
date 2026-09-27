@@ -852,7 +852,7 @@
         if (rng() < 0.25) dir = pick(NB4);
         if (!inPark.has(key(pu + dir[0], pv + dir[1]))) { dir = pick(NB4); continue; }
         pu += dir[0]; pv += dir[1];
-        if (k % 7 === 3) {
+        if (k % 7 === 3 && !water.has(key(pu, pv))) {
           prop(rng() < 0.5 ? 'props/bench-ne.png' : 'props/bench-nw.png', pu + 0.5, pv + 0.2);
           if (rng() < 0.4) artProp(pick(['street/bin-green.png', 'street/bin-wire.png']), pu + 0.85, pv + 0.25);
         }
@@ -1119,8 +1119,10 @@
     // coast side), vending machines and phone booths downtown, bins anywhere.
     {
       const turnedName = (name, k) => (k ? name.replace('.png', `-r${k}.png`) : name);
+      const wet = (u, v) => /pond|pool|canal|shore|water/.test((groundMap.get(key(Math.floor(u), Math.floor(v))) || [''])[0]);
       const clear = (u, v, r) => !lots.some(l => u > l[1] - r && u < l[2] + r && v > l[3] - r && v < l[4] + r) &&
-        !props.some(q => Math.hypot(q[1] - u, q[2] - v) < r + 0.15);
+        !props.some(q => Math.hypot(q[1] - u, q[2] - v) < r + 0.15) &&
+        ![[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].some(([a, b]) => wet(u + a, v + b));
       const stops = [];
       const SIDES = [[[0, 1], 0], [[-1, 0], 1], [[0, -1], 2], [[1, 0], 3]];      // side of the block, sprite turn
       for (const c of cells.values()) {
