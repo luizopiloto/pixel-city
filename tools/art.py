@@ -1182,6 +1182,10 @@ def sign_face(s, text, length_px, height_px, board, ink, bulbs):
     tw = sum(widths) + len(text) - 1
 
     def shader(a, b, xs, ys):
+        # Read left to right on screen: a turned sprite's face may run the
+        # other way along its own axis.
+        if len(a) > 1 and xs[a >= 0.5].mean() < xs[a < 0.5].mean():
+            a = 1 - a
         col = np.floor(a * length_px).astype(int)
         row = np.floor((1 - b) * height_px).astype(int)
         out = np.repeat(b_[None], len(a), 0)
