@@ -753,15 +753,38 @@
         }
         return n ? t / n : 0;
       };
-      const sand = [];
+      let sand = [];
       for (const [k, d] of dist) {
         if (!d) continue;
         const [u, v] = k.split(',').map(Number), f = front(u, v);
-        if (d === 1 || d <= 1.4 + 6.6 * f * f + (field(u / 2.5, v / 2.5) - 0.5) * 2.4) {
-          setGround(u, v, rng() < 0.7 ? 'art/ground/sand-a' : 'art/ground/sand-b');
-          sand.push([u, v, f, d]);
-        } else sea.add(k);
+        const width = 1.4 + 6.6 * f * f + (field(u / 2.5, v / 2.5) - 0.5) * 2.4;
+        if (d === 1 || d <= width) sand.push([u, v, f, d, width]);
+        else sea.add(k);
       }
+      // Sand only along open water: in a narrow gap between parts of the
+      // city, sand farther from the sea than the beach is wide would be an
+      // enclosed sandbox, so it becomes grass with a few trees instead.
+      const toSea = new Map();
+      let edge = sand.filter(([u, v]) => NB4.some(([a, b]) => sea.has(key(u + a, v + b))));
+      edge.forEach(([u, v]) => toSea.set(key(u, v), 1));
+      const isSand = new Set(sand.map(([u, v]) => key(u, v)));
+      for (let d = 2; edge.length; d++) {
+        const next = [];
+        for (const [u, v] of edge) for (const [a, b] of NB4) {
+          const k = key(u + a, v + b);
+          if (isSand.has(k) && !toSea.has(k)) { toSea.set(k, d); next.push(k.split(',').map(Number)); }
+        }
+        edge = next;
+      }
+      sand = sand.filter(([u, v, , , width]) => {
+        if ((toSea.get(key(u, v)) || Infinity) <= Math.max(2, width) + 2) {
+          setGround(u, v, rng() < 0.7 ? 'art/ground/sand-a' : 'art/ground/sand-b');
+          return true;
+        }
+        setGround(u, v, pick(GRASSES));
+        if (rng() < 0.22) artProp(pick(rng() < 0.6 ? TREES : BUSHES), u + 0.2 + rng() * 0.6, v + 0.2 + rng() * 0.6);
+        return false;
+      });
       // Sea tiles: shoreline autotiles where they touch sand (sides n = -u,
       // e = -v, s = +u, w = +v; corners where only the diagonal is dry).
       const wet = (u, v) => u < 0 || v < 0 || u >= nu || v >= nv || sea.has(key(u, v));
