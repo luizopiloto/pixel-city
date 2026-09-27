@@ -1435,8 +1435,8 @@
  },
  "parking/fence.png": {
   "size": [
-   62,
-   31
+   66,
+   44
   ],
   "anchor": [
    2,
@@ -1446,11 +1446,21 @@
  "parking/fence-r1.png": {
   "size": [
    65,
-   32
+   44
   ],
   "anchor": [
    65,
    12
+  ]
+ },
+ "parking/sign.png": {
+  "size": [
+   36,
+   64
+  ],
+  "anchor": [
+   18,
+   59
   ]
  },
  "parking/gate-l.png": {

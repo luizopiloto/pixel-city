@@ -557,9 +557,10 @@
       }
       const hs = alongV ? stalls.find(t => t.u === u0 + 0.5 && t.v === v0 + 0.75)
         : stalls.find(t => t.v === v0 + 0.5 && t.u === u0 + 4.25);
+      const sign = [eu + 1.3, v1 - 0.22];          // PARK sign, inside the fence beside the entrance
       const cars = [];
       for (const t of stalls) {
-        if (t === hs || rng() > 0.45) continue;
+        if (t === hs || rng() > 0.45 || Math.hypot(t.u - sign[0], t.v - sign[1]) < 0.5) continue;
         const flip = rng() < 0.35 ? -1 : 1;           // most park nose to the aisle
         cars.push({ u: t.u, v: t.v, head: [t.toAisle[0] * flip, t.toAisle[1] * flip], type: pick(TYPES) });
       }
@@ -583,6 +584,7 @@
         props.push(['art/parking/fence-r1.png', u1 - 0.01, v, [u1 - 0.04, u1 - 0.01, v, v + 1]]);
       }
       props.push(['art/parking/gate-l.png', eu + 0.06, v1 - 0.1], ['art/parking/gate-r.png', eu + 0.94, v1 - 0.1]);
+      props.push(['art/parking/sign.png', ...sign, [sign[0] - 0.25, sign[0] + 0.25, sign[1] - 0.03, sign[1] + 0.03]]);
       parking = { cars, lead, behind: [sb.bi + 1, sb.bj + sb.bh], ahead: [sb.bi, sb.bj + sb.bh] };
     }
 

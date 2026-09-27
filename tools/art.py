@@ -1873,7 +1873,7 @@ def lot_tile(seed, lines=None):
 def fence(seed, rot=0):
     """Low metal railing along u, 1 tile long (turned by rot): posts and
     two rails."""
-    s = Sprite(110, 60, 20, 40, seed)
+    s = Sprite(110, 80, 20, 30, seed)              # 1 tile runs 64 px across, 32 down
     s.rot = rot
     if rot % 2:
         s.ox = s.w - 20
@@ -1883,6 +1883,20 @@ def fence(seed, rot=0):
     for z in (4, 9):
         s.box(0, 0, z, 1.0, 0.02, 1.6, *metal)
     s.outline(0.8)
+    return s
+
+
+def park_sign(seed):
+    """Pole sign for the parking lot: a blue board reading PARK on two
+    posts, facing +v (the street)."""
+    s = Sprite(110, 130, 55, 100, seed)
+    post = [flat(s, c, 3) for c in ("#8e8897", "#716f74", "#5b5a5c")]
+    for x in (-0.16, 0.13):
+        s.box(x, -0.015, 0, 0.03, 0.03, 34, *post)
+    board = 0.5
+    s.box(-board / 2, -0.03, 34, board, 0.06, 16, flat(s, "#2b4a6e"),
+          sign_face(s, "PARK", board * HW, 16, "#2f5a88", "#e8eef4", "#e8eef4"), flat(s, "#24405e"))
+    s.outline(0.75)
     return s
 
 
@@ -2181,6 +2195,7 @@ def main():
     save_tile(lot_tile(162, "v"), "ground/lot-lines-v.png")
     save(fence(163), "parking/fence.png")
     save(fence(163, rot=1), "parking/fence-r1.png")
+    save(park_sign(166), "parking/sign.png")
     save_anim([gate(164, 1, k / 7) for k in range(8)], "parking/gate-l.png", footprint=[0.1, 0.1])
     save_anim([gate(165, -1, k / 7) for k in range(8)], "parking/gate-r.png", footprint=[0.1, 0.1])
     # Recreation: suburb BBQ areas and playgrounds, downtown squares.
