@@ -1493,6 +1493,256 @@
    0.1
   ]
  },
+ "street/bus-stop.png": {
+  "size": [
+   49,
+   55
+  ],
+  "anchor": [
+   25,
+   41
+  ]
+ },
+ "street/bus-stop-simple.png": {
+  "size": [
+   42,
+   45
+  ],
+  "anchor": [
+   22,
+   33
+  ]
+ },
+ "street/vending-red.png": {
+  "size": [
+   22,
+   34
+  ],
+  "anchor": [
+   11,
+   29
+  ]
+ },
+ "street/vending-blue.png": {
+  "size": [
+   22,
+   34
+  ],
+  "anchor": [
+   11,
+   29
+  ]
+ },
+ "street/phone-booth.png": {
+  "size": [
+   28,
+   57
+  ],
+  "anchor": [
+   14,
+   51
+  ]
+ },
+ "street/bus-stop-r1.png": {
+  "size": [
+   60,
+   52
+  ],
+  "anchor": [
+   36,
+   42
+  ]
+ },
+ "street/bus-stop-simple-r1.png": {
+  "size": [
+   45,
+   39
+  ],
+  "anchor": [
+   26,
+   31
+  ]
+ },
+ "street/vending-red-r1.png": {
+  "size": [
+   22,
+   34
+  ],
+  "anchor": [
+   11,
+   29
+  ]
+ },
+ "street/vending-blue-r1.png": {
+  "size": [
+   22,
+   34
+  ],
+  "anchor": [
+   11,
+   29
+  ]
+ },
+ "street/phone-booth-r1.png": {
+  "size": [
+   28,
+   57
+  ],
+  "anchor": [
+   14,
+   51
+  ]
+ },
+ "street/bus-stop-r2.png": {
+  "size": [
+   49,
+   72
+  ],
+  "anchor": [
+   24,
+   62
+  ]
+ },
+ "street/bus-stop-simple-r2.png": {
+  "size": [
+   41,
+   55
+  ],
+  "anchor": [
+   19,
+   47
+  ]
+ },
+ "street/vending-red-r2.png": {
+  "size": [
+   22,
+   34
+  ],
+  "anchor": [
+   11,
+   29
+  ]
+ },
+ "street/vending-blue-r2.png": {
+  "size": [
+   22,
+   34
+  ],
+  "anchor": [
+   11,
+   29
+  ]
+ },
+ "street/phone-booth-r2.png": {
+  "size": [
+   28,
+   57
+  ],
+  "anchor": [
+   14,
+   51
+  ]
+ },
+ "street/bus-stop-r3.png": {
+  "size": [
+   60,
+   65
+  ],
+  "anchor": [
+   24,
+   55
+  ]
+ },
+ "street/bus-stop-simple-r3.png": {
+  "size": [
+   46,
+   49
+  ],
+  "anchor": [
+   20,
+   41
+  ]
+ },
+ "street/vending-red-r3.png": {
+  "size": [
+   22,
+   34
+  ],
+  "anchor": [
+   11,
+   29
+  ]
+ },
+ "street/vending-blue-r3.png": {
+  "size": [
+   22,
+   34
+  ],
+  "anchor": [
+   11,
+   29
+  ]
+ },
+ "street/phone-booth-r3.png": {
+  "size": [
+   28,
+   57
+  ],
+  "anchor": [
+   14,
+   51
+  ]
+ },
+ "street/bin-green.png": {
+  "size": [
+   14,
+   18
+  ],
+  "anchor": [
+   7,
+   15
+  ]
+ },
+ "street/bin-wire.png": {
+  "size": [
+   10,
+   17
+  ],
+  "anchor": [
+   5,
+   14
+  ]
+ },
+ "street/bin-recycle.png": {
+  "size": [
+   24,
+   25
+  ],
+  "anchor": [
+   12,
+   20
+  ]
+ },
+ "street/statue.png": {
+  "size": [
+   52,
+   75
+  ],
+  "anchor": [
+   26,
+   62
+  ]
+ },
+ "street/obelisk.png": {
+  "size": [
+   52,
+   107
+  ],
+  "anchor": [
+   26,
+   94
+  ]
+ },
  "rec/picnic-table.png": {
   "size": [
    59,
@@ -2065,6 +2315,21 @@
   "footprint": [
    2.5,
    2.5
+  ]
+ },
+ "landmarks/tv-led.png": {
+  "size": [
+   141,
+   69
+  ],
+  "anchor": [
+   72,
+   46
+  ],
+  "frames": 16,
+  "footprint": [
+   0.1,
+   0.1
   ]
  },
  "buildings/fastfood.png": {

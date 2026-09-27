@@ -1149,6 +1149,7 @@ def awning(s, x0, y, length, z, color, depth=0.22):
 # 4×7 pixel letters for signs (legible on a slanted board).
 GLYPHS = {
     "V": ["10001", "10001", "10001", "10001", "01010", "01010", "00100"],
+    "W": ["10001", "10001", "10001", "10101", "10101", "11011", "10001"],
     "7": ["1111", "0001", "0010", "0010", "0100", "0100", "0100"],
     " ": ["00"] * 7,
     "D": ["1110", "1001", "1001", "1001", "1001", "1001", "1110"],
@@ -2017,6 +2018,197 @@ def tv_station(seed):
     return s, (2 * R0 + 0.3, 2 * R0 + 0.3)
 
 
+# ---------- street furniture ----------
+
+BRONZE = ramp("#3e3226", "#5a4630", "#7a5e3a", "#9a7a4a")
+STEEL = ("#8e8897", "#716f74", "#5b5a5c")
+
+
+def bus_stop_fancy(seed, rot=0):
+    """Downtown bus shelter open to +v (turned by rot): glass back and
+    sides, a dark roof, a bench, a lit ad panel and a BUS sign pole."""
+    s = Sprite(140, 120, 70, 80, seed)
+    s.rot = rot
+    steel = [flat(s, c, 3) for c in STEEL]
+    L, D, H = 0.46, 0.2, 26
+
+    def glass(a_, b_, xs, ys):
+        edge = (a_ < 0.04) | (a_ > 0.96) | (b_ < 0.06) | (b_ > 0.94)
+        pane = np.array(GLASS)[(xs // 2 + ys) % 3] * 1.08
+        return np.where(edge[:, None], rgb("#5b5a5c"), pane)
+    for x in (-L / 2, L / 2 - 0.02):                   # posts
+        for y in (-D / 2, D / 2 - 0.02):
+            s.box(x, y, 0, 0.02, 0.02, H, *steel)
+    s.face((-L / 2, -D / 2, 2), (L, 0, 0), (0, 0, H - 4), glass, light="auto")              # back
+    s.face((-L / 2, -D / 2, 2), (0, D * 0.8, 0), (0, 0, H - 4), glass, light="auto")        # sides
+    s.face((L / 2, -D / 2, 2), (0, D * 0.8, 0), (0, 0, H - 4), glass, light="auto")
+
+    def ad(a_, b_, xs, ys):
+        poster = ramp("#c8a050", "#d8b870", "#8a4a3e", "#3f6f73")
+        return np.array(poster)[((b_ * 4).astype(int) + (a_ * 2).astype(int)) % 4] * 1.1
+    s.face((L / 2 - 0.005, -D / 2 + 0.02, 4), (0, D * 0.6, 0), (0, 0, 16), ad, light="auto")
+    s.box(-L / 2 + 0.04, -D / 2 + 0.03, 6, L - 0.08, 0.06, 2, flat(s, "#8a6751"), flat(s, "#765743"), flat(s, "#5f4646"))
+    s.box(-L / 2 - 0.02, -D / 2 - 0.02, H, L + 0.04, D + 0.06, 3, flat(s, "#2b4636"), flat(s, "#24392d"), flat(s, "#1e3026"))
+    # Sign pole at the curb end.
+    s.box(L / 2 + 0.06, D / 2, 0, 0.02, 0.02, 34, *steel)
+    s.box(L / 2 - 0.05, D / 2 - 0.005, 34, 0.26, 0.03, 10, flat(s, "#2b4a6e"),
+          sign_face(s, "BUS", 0.26 * HW, 10, "#2f5a88", "#e8eef4", "#2f5a88"), flat(s, "#24405e"))
+    s.outline(0.75)
+    return s
+
+
+def bus_stop_simple(seed, rot=0):
+    """Country bus stop facing +v: a timber lean-to with a bench and a
+    pole sign."""
+    s = Sprite(120, 110, 60, 75, seed)
+    s.rot = rot
+    wood = [flat(s, c, 6) for c in ("#8a6751", "#765743", "#5f4646")]
+    L, D, H = 0.36, 0.16, 22
+    for x in (-L / 2, L / 2 - 0.025):
+        s.box(x, -D / 2, 0, 0.025, 0.025, H, *wood)
+        s.box(x, D / 2 - 0.025, 0, 0.025, 0.025, H - 5, *wood)
+    s.face((-L / 2, -D / 2, 1), (L, 0, 0), (0, 0, H - 2), banded(s, [rgb("#765743"), rgb("#6a4e3e")], 6, axis=1), light="auto")
+    s.box(-L / 2 + 0.03, -D / 2 + 0.03, 6, L - 0.06, 0.06, 2, *wood)
+    s.face((-L / 2 - 0.03, -D / 2 - 0.03, H + 1), (L + 0.06, 0, 0), (0, D + 0.08, -6),
+           banded(s, [rgb("#6e4c49"), rgb("#5a3e3a")], 5, axis=0), light="auto")
+    s.box(L / 2 + 0.07, D / 2, 0, 0.018, 0.018, 30, *(flat(s, c, 3) for c in STEEL))
+    s.blob((L / 2 + 0.08, D / 2 + 0.01, 32), 4, ramp("#2f5a88", "#3f6a98", "#e8eef4"), squash=1.0)
+    s.outline(0.75)
+    return s
+
+
+def vending(seed, color="#8a3a32", rot=0):
+    """Drinks vending machine facing +v: coloured cabinet, a lit window of
+    bottles, buttons and the pick-up slot."""
+    s = Sprite(70, 80, 35, 55, seed)
+    s.rot = rot
+    c = rgb(color)
+    a, b, h = 0.2, 0.14, 24
+
+    def front(a_, b_, xs, ys):
+        z, x = b_ * h, a_ * a * 71.6
+        out = np.repeat(c[None], len(a_), 0)
+        win = (z > 9) & (z < 21) & (x > 1.5) & (x < a * 71.6 - 5)
+        rows = np.floor((z - 9) / 3)
+        bottles = ramp("#e8e2d6", "#c8402a", "#4a8a4a", "#e0c050")
+        out = np.where(win[:, None], np.array(bottles)[((xs // 2) + rows.astype(int)) % 4] * 0.95, out)
+        out = np.where((win & (np.mod(z - 9, 3) < 0.8))[:, None], rgb("#dde6e8"), out)
+        buttons = (z > 11) & (z < 20) & (x >= a * 71.6 - 4) & (x < a * 71.6 - 2) & (np.mod(z, 2) < 1)
+        out = np.where(buttons[:, None], rgb("#e8e2d6"), out)
+        slot = (z > 2) & (z < 5) & (x > 3) & (x < a * 71.6 - 6)
+        return np.where(slot[:, None], rgb("#1e1e22"), out) + (s.grain[ys, xs] - 0.5)[:, None] * 4
+    s.box(-a / 2, -b / 2, 0, a, b, h, flat(s, c * 1.1), front, flat(s, c * 0.9))
+    if rot:                                             # the far faces show once turned
+        s.face((-a / 2, -b / 2, 0), (a, 0, 0), (0, 0, h), flat(s, c * 0.9), light="auto")
+        s.face((-a / 2, -b / 2, 0), (0, b, 0), (0, 0, h), flat(s, c * 0.9), light="auto")
+    s.outline(0.75)
+    return s
+
+
+def phone_booth(seed, rot=0):
+    """Red phone booth with glazed sides and a PHONE sign, door to +v."""
+    s = Sprite(80, 110, 40, 85, seed)
+    s.rot = rot
+    red = rgb("#8a3a32")
+    a, h = 0.2, 40
+
+    def pane(a_, b_, xs, ys):
+        z = b_ * h
+        bars = (np.mod(a_ * 3, 1) < 0.18) | (np.mod(z, 7) < 1.2) | (z < 6) | (z > h - 8)
+        return np.where(bars[:, None], red, np.array(GLASS)[(xs + ys) % 3] * 1.1)
+    s.box(-a / 2, -a / 2, 0, a, a, h, flat(s, red), pane, pane)
+    if rot:
+        s.face((-a / 2, -a / 2, 0), (a, 0, 0), (0, 0, h), pane, light="auto")
+        s.face((-a / 2, -a / 2, 0), (0, a, 0), (0, 0, h), pane, light="auto")
+    s.box(-a / 2 - 0.01, -a / 2 - 0.01, h, a + 0.02, a + 0.02, 4, flat(s, red * 1.1), flat(s, red * 0.95), flat(s, red * 0.85))
+    header = lambda a_, b_, xs, ys: np.where(((b_ > 0.3) & (b_ < 0.7) & (np.mod(xs, 2) == 0))[:, None],
+                                             rgb("#e8e2d6"), rgb("#1e1e22"))
+    s.box(-a / 2 + 0.02, a / 2, h - 7, a - 0.04, 0.01, 5, flat(s, "#1e1e22"), header, flat(s, "#1e1e22"))
+    s.outline(0.75)
+    return s
+
+
+def trash_can(seed, kind="green"):
+    """Street bins: a green municipal bin with a lid, a wire basket, or a
+    blue and green recycling pair."""
+    s = Sprite(60, 60, 30, 42, seed)
+    if kind == "green":
+        ring(s, 0.07, 0, 12, lambda k: banded(s, [rgb("#3d6a3e"), rgb("#34593a")], 4, axis=0), n=12)
+        disk(s, 0.075, 12, flat(s, "#2e4a30"), n=12)
+        s.blob((0, 0, 14), 2.2, ramp("#2e4a30", "#3d6a3e", "#4a7a4a"), squash=0.5)
+    elif kind == "wire":
+        def mesh(k):
+            def sh(a_, b_, xs, ys):
+                grid = (np.mod(xs, 2) == 0) | (np.mod(ys, 3) == 0)
+                return np.where(grid[:, None], rgb("#716f74"), rgb("#3a3a3e"))
+            return sh
+        ring(s, 0.06, 0, 11, mesh, n=10)
+        disk(s, 0.05, 1, flat(s, "#2e2e32"), n=10)
+    else:
+        for dx, col in ((-0.07, "#2f5a88"), (0.07, "#3d6a3e")):
+            s.box(dx - 0.05, -0.05, 0, 0.1, 0.1, 12, flat(s, rgb(col) * 0.8), flat(s, col), flat(s, rgb(col) * 0.85))
+            s.box(dx - 0.055, -0.055, 12, 0.11, 0.11, 2, flat(s, rgb(col) * 0.7), flat(s, rgb(col) * 0.8), flat(s, rgb(col) * 0.7))
+    s.outline(0.75)
+    return s
+
+
+def statue(seed, kind="figure"):
+    """Monuments for squares and parks: a bronze figure with a raised arm,
+    or a stone obelisk, on a stepped stone plinth."""
+    s = Sprite(90, 150, 45, 120, seed)
+    stone = [flat(s, c, 5) for c in ("#d8d0c0", "#bdb3a2", "#a69c8c")]
+    s.box(-0.2, -0.2, 0, 0.4, 0.4, 4, *stone)
+    s.box(-0.14, -0.14, 4, 0.28, 0.28, 22, *stone)
+    s.box(-0.16, -0.16, 26, 0.32, 0.32, 3, *stone)
+    if kind == "figure":
+        br = [flat(s, BRONZE[k], 4) for k in (3, 2, 1)]        # standing figure, right arm raised
+        for dy in (-0.03, 0.02):
+            s.box(-0.02, dy, 29, 0.035, 0.035, 11, *br)         # legs
+        s.box(-0.035, -0.045, 40, 0.07, 0.1, 13, *br)           # coat
+        s.box(-0.02, -0.07, 44, 0.03, 0.03, 8, *br)             # left arm, down
+        s.blob((0, 0, 57), 3, BRONZE)                           # head
+        for k in range(10):                                     # right arm, up and forward
+            s.box(0.0 + k * 0.004, 0.055, 51 + k * 1.3, 0.03, 0.03, 2, *br)
+    else:
+        for z in range(29, 90, 3):                               # obelisk
+            w = 0.1 * (1 - (z - 29) / 80)
+            s.box(-w / 2, -w / 2, z, w, w, 3, *stone)
+        s.blob((0, 0, 92), 1.6, ramp("#a69c8c", "#d8d0c0", "#e8e2d6"))
+    s.outline(0.72)
+    return s
+
+
+def tv_led(seed, p):
+    """The TV station's LED panels at phase p (drawn over the station, same
+    origin): a video wall on the studio's +u side and a scrolling ticker
+    across its front."""
+    s = Sprite(360, 600, 180, 500, seed)
+    a, b = 1.3, 1.1
+    x0, y0 = -a / 2, -b / 2
+    vid = ramp("#1e2a4a", "#2f5a88", "#3f8aa8", "#e8e2d6", "#e0a040", "#c8402a")
+
+    def wall(a_, b_, xs, ys):
+        v = np.sin(xs * 0.35 + p * 6.283) + np.sin(ys * 0.28 - p * 12.566) + np.sin((xs + ys) * 0.15 + p * 6.283)
+        out = np.array(vid)[np.clip(((v + 3) / 6 * len(vid)).astype(int), 0, len(vid) - 1)]
+        return np.where(((xs + ys) % 2 == 0)[:, None], out, out * 0.72)          # LED dot pitch
+    s.face((x0 + a + 0.005, y0 + 0.12, 10), (0, b - 0.3, 0), (0, 0, 44), wall, light=1.0)
+    text = "TV 7 NEWS  "
+    cols = []
+    for ch in text:
+        g = GLYPHS[ch]
+        cols += [[row[k] == "1" for row in g] for k in range(len(g[0]))] + [[False] * 7]
+    bitmap = np.array(cols).T                                                  # 7 × width
+    shift = int(p * bitmap.shape[1])
+
+    def ticker(a_, b_, xs, ys):
+        row = np.clip((7 - b_ * 9).astype(int), 0, 6)
+        col = (xs + shift) % bitmap.shape[1]
+        on = bitmap[row, col] & (b_ > 0.1) & (b_ < 0.88)
+        return np.where(on[:, None], rgb("#f2c06a"), rgb("#2a1e14"))
+    s.face((x0 + 0.08, y0 + b + 0.005, 32), (a - 0.16, 0, 0), (0, 0, 9), ticker, light=1.0)
+    return s
+
+
 # ---------- recreation ----------
 
 REC_WOOD = ("#8a6751", "#765743", "#5f4646")
@@ -2295,6 +2487,18 @@ def main():
     save(park_sign(166), "parking/sign.png")
     save_anim([gate(164, 1, k / 7) for k in range(8)], "parking/gate-l.png", footprint=[0.1, 0.1])
     save_anim([gate(165, -1, k / 7) for k in range(8)], "parking/gate-r.png", footprint=[0.1, 0.1])
+    # Street furniture; turned versions -r1..-r3 as for the beach props.
+    turns = lambda k: "" if k == 0 else f"-r{k}"
+    for k in range(4):
+        save(bus_stop_fancy(170, k), f"street/bus-stop{turns(k)}.png")
+        save(bus_stop_simple(171, k), f"street/bus-stop-simple{turns(k)}.png")
+        save(vending(172, "#8a3a32", k), f"street/vending-red{turns(k)}.png")
+        save(vending(173, "#2f5a88", k), f"street/vending-blue{turns(k)}.png")
+        save(phone_booth(174, k), f"street/phone-booth{turns(k)}.png")
+    for kind in ("green", "wire", "recycle"):
+        save(trash_can(175, kind), f"street/bin-{kind}.png")
+    save(statue(176, "figure"), "street/statue.png")
+    save(statue(177, "obelisk"), "street/obelisk.png")
     # Recreation: suburb BBQ areas and playgrounds, downtown squares.
     save(picnic_table(150), "rec/picnic-table.png")
     save(barbecue(151), "rec/barbecue.png")
@@ -2355,6 +2559,7 @@ def main():
     save(spr, "buildings/hotel.png", footprint=[fa, fb])
     spr, (fa, fb) = tv_station(340)
     save(spr, "landmarks/tv-station.png", footprint=[fa, fb])
+    save_anim([tv_led(341, k / 16) for k in range(16)], "landmarks/tv-led.png", footprint=[0.1, 0.1])
     spr, (fa, fb) = fastfood(320)
     save(spr, "buildings/fastfood.png", footprint=[fa, fb])
     # Civic: one of each per district (the generator enforces "unique").

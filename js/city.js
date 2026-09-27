@@ -588,6 +588,7 @@
     // TV station (one 2×2 downtown block): the studio under its lattice
     // tower in the middle of a paved plaza with a lawn ring, trees at the
     // corners, benches and lamps.
+    let tvLed = null;                              // where the TV station's LED panels go
     function tvStation({ u0, u1, v0, v1 }) {
       const cu = (u0 + u1) / 2, cv = (v0 + v1) / 2;
       pave(u0, v0, u1 - u0, v1 - v0);
@@ -595,6 +596,7 @@
         if (Math.max(Math.abs(u + 0.5 - cu), Math.abs(v + 0.5 - cv)) > 1.6) setGround(u, v, pick(GRASSES));
       }
       artLot('landmarks/tv-station.png', cu, cv);
+      tvLed = [cu, cv];
       for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) artProp(pick(CITY_TREES), cu + a * 2.6, cv + b * 2.6);
       for (const d of [-1, 1]) {
         prop('props/bench-nw.png', cu + d * 2.3, cv + 0.6);
@@ -625,7 +627,7 @@
       }
       for (let u = u0 + 1; u < u1 - 1; u++) for (let v = v0 + 2; v < v1 - 2; v++) setGround(u, v, pick(GRASSES));
       setGround(Math.floor(cu), Math.floor(cv), 'paving');
-      artProp('rec/fountain.png', cu, cv);
+      artProp(rng() < 0.4 ? pick(['street/statue.png', 'street/obelisk.png']) : 'rec/fountain.png', cu, cv);
       prop('props/bench-nw.png', cu - 1.25, cv);
       prop('props/bench-nw.png', cu + 1.25, cv);
       prop('props/bench-ne.png', cu, cv - 0.95);
@@ -849,7 +851,17 @@
         if (rng() < 0.25) dir = pick(NB4);
         if (!inPark.has(key(pu + dir[0], pv + dir[1]))) { dir = pick(NB4); continue; }
         pu += dir[0]; pv += dir[1];
-        if (k % 7 === 3) prop(rng() < 0.5 ? 'props/bench-ne.png' : 'props/bench-nw.png', pu + 0.5, pv + 0.2);
+        if (k % 7 === 3) {
+          prop(rng() < 0.5 ? 'props/bench-ne.png' : 'props/bench-nw.png', pu + 0.5, pv + 0.2);
+          if (rng() < 0.4) artProp(pick(['street/bin-green.png', 'street/bin-wire.png']), pu + 0.85, pv + 0.25);
+        }
+      }
+      // A statue or an obelisk beside the path, now and then.
+      for (let k = 0, n = Math.max(1, Math.round(tiles.length / 70)); k < n; k++) {
+        const [u, v] = pick(tiles), q = key(u, v);
+        if (water.has(q) || path.has(q) || !NB4.some(([a, b]) => path.has(key(u + a, v + b)))) continue;
+        artProp(rng() < 0.6 ? 'street/statue.png' : 'street/obelisk.png', u + 0.5, v + 0.5);
+        path.add(q);                                  // keeps the trees off it
       }
       const species = shuffle([...TREES]).slice(0, 3);
       for (const [u, v] of tiles) {
@@ -1100,6 +1112,43 @@
       }
     }
 
+    // Street furniture on the block edges that face a road, each facing its
+    // street (turned sprites -r1..-r3, as for the beach props): bus stops
+    // (a glass shelter downtown, a timber one in suburbs, parks and on the
+    // coast side), vending machines and phone booths downtown, bins anywhere.
+    {
+      const turnedName = (name, k) => (k ? name.replace('.png', `-r${k}.png`) : name);
+      const clear = (u, v, r) => !lots.some(l => u > l[1] - r && u < l[2] + r && v > l[3] - r && v < l[4] + r) &&
+        !props.some(q => Math.hypot(q[1] - u, q[2] - v) < r + 0.15);
+      const stops = [];
+      const SIDES = [[[0, 1], 0], [[-1, 0], 1], [[0, -1], 2], [[1, 0], 3]];      // side of the block, sprite turn
+      for (const c of cells.values()) {
+        const u0 = roadAt(c.i) + 1, v0 = roadAt(c.j) + 1;
+        const busy = c.type === 'downtown' || c.type === 'plaza';
+        for (const [[du, dv], k] of SIDES) {
+          const ru = du > 0 ? u0 + BLOCK : du < 0 ? u0 - 1 : u0 + 1, rv = dv > 0 ? v0 + BLOCK : dv < 0 ? v0 - 1 : v0 + 1;
+          if (!isRoad(ru, rv)) continue;
+          const t = 0.45 + rng() * 2.1, inset = 0.22;
+          const u = du > 0 ? u0 + BLOCK - inset : du < 0 ? u0 + inset : u0 + t;
+          const v = dv > 0 ? v0 + BLOCK - inset : dv < 0 ? v0 + inset : v0 + t;
+          const coast = !cellAt(c.i + du, c.j + dv);
+          const r = rng();
+          if (r < 0.06) {
+            if (!clear(u, v, 0.35) || stops.some(([a, b]) => Math.abs(a - u) + Math.abs(b - v) < 8)) continue;
+            artProp(turnedName(busy && !coast ? 'street/bus-stop.png' : 'street/bus-stop-simple.png', k), u, v);
+            stops.push([u, v]);
+          } else if (busy && r < 0.12) {
+            if (clear(u, v, 0.18)) artProp(turnedName(pick(['street/vending-red.png', 'street/vending-blue.png']), k), u, v);
+          } else if (busy && r < 0.155) {
+            if (clear(u, v, 0.18)) artProp(turnedName('street/phone-booth.png', k), u, v);
+          } else if (r < 0.24) {
+            const bins = busy ? ['street/bin-green.png', 'street/bin-recycle.png'] : ['street/bin-green.png', 'street/bin-wire.png'];
+            if (clear(u, v, 0.12)) artProp(pick(bins), u, v);
+          }
+        }
+      }
+    }
+
     // Entrances: every building's door is on its +v front. Keep a clear
     // DOOR-deep strip in front of it, and (new sprites) any part drawn
     // outside the footprint, free of props; count buildings that
@@ -1131,6 +1180,9 @@
       }
     }
     const blockedDoors = blocked.length;
+    // Drawn over the TV station, just in front of it in paint order.
+    if (tvLed) props.push(['art/landmarks/tv-led.png', tvLed[0], tvLed[1],
+      [tvLed[0] + 0.6, tvLed[0] + 0.7, tvLed[1] + 0.6, tvLed[1] + 0.7]]);
 
     // Crosswalks on the approaches to every 4-way crossing.
     const isCross = (u, v) => isRoad(u, v) && NB4.every(([du, dv]) => isRoad(u + du, v + dv));
@@ -1754,7 +1806,7 @@
       if (m && m.frames > 1) {
         const [a, b] = m.footprint || [0.1, 0.1], [w, h] = m.size;
         const item = { src, frames: m.frames, rect: [Math.round(x - ax), Math.round(y - ay), w, h],
-          box: [u - a / 2, u + a / 2, v - b / 2, v + b / 2] };
+          box: box || [u - a / 2, u + a / 2, v - b / 2, v + b / 2] };
         item.draw = c => {
           const f = item.frameOf ? item.frameOf() : Math.floor(clock * ANIM_FPS) % item.frames;
           c.drawImage(img[src], f * w, 0, w, h, item.rect[0], item.rect[1], w, h);
