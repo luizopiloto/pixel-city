@@ -800,13 +800,15 @@
         if (sq) sq.square = true;
       }
     });
+    // Civic blocks are paved in every district; suburb ones keep a few more
+    // (and leafier) trees than the downtown and plaza ones.
     function civicCell(c, u, v, ground) {
-      if (ground === 'paving') pave(u, v); else grassy(u, v);
+      pave(u, v);
       artLot(c.civic, u + 1.5, v + 1.5, c.district);
       const [a, b] = fp(c.civic);
       // Not on the building, nor on the two sides facing the camera (+u, +v).
       const off = (uu, vv) => uu > u + 1.5 - a / 2 - 0.3 && vv > v + 1.5 - b / 2 - 0.3;
-      scatter(u, v, 3, 3, ground === 'paving' ? 2 : 4, ground === 'paving' ? ['nature/trees/oak-small.png'] : TREES, off, 0.6);
+      scatter(u, v, 3, 3, ground === 'paving' ? 2 : 3, ground === 'paving' ? ['nature/trees/oak-small.png'] : CITY_TREES, off, 0.6);
     }
 
     // Downtown blocks: the template mix, plus a share of the new buildings.
