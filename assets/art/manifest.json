@@ -1743,6 +1743,136 @@
    94
   ]
  },
+ "buildings/pizza.png": {
+  "size": [
+   165,
+   147
+  ],
+  "anchor": [
+   88,
+   109
+  ],
+  "footprint": [
+   1.4,
+   1.0
+  ]
+ },
+ "buildings/bistro.png": {
+  "size": [
+   188,
+   154
+  ],
+  "anchor": [
+   83,
+   100
+  ],
+  "footprint": [
+   1.3,
+   0.95
+  ]
+ },
+ "buildings/cakes.png": {
+  "size": [
+   145,
+   143
+  ],
+  "anchor": [
+   78,
+   109
+  ],
+  "footprint": [
+   1.2,
+   0.9
+  ]
+ },
+ "buildings/toys.png": {
+  "size": [
+   155,
+   161
+  ],
+  "anchor": [
+   83,
+   125
+  ],
+  "footprint": [
+   1.3,
+   0.95
+  ]
+ },
+ "buildings/bakery.png": {
+  "size": [
+   145,
+   132
+  ],
+  "anchor": [
+   78,
+   98
+  ],
+  "footprint": [
+   1.2,
+   0.9
+  ]
+ },
+ "fun/kite-a.png": {
+  "size": [
+   72,
+   125
+  ],
+  "anchor": [
+   0,
+   188
+  ],
+  "frames": 8,
+  "footprint": [
+   0.1,
+   0.1
+  ]
+ },
+ "fun/kite-b.png": {
+  "size": [
+   34,
+   157
+  ],
+  "anchor": [
+   0,
+   220
+  ],
+  "frames": 8,
+  "footprint": [
+   0.1,
+   0.1
+  ]
+ },
+ "fun/air-dancer.png": {
+  "size": [
+   29,
+   70
+  ],
+  "anchor": [
+   14,
+   64
+  ],
+  "frames": 8,
+  "footprint": [
+   0.2,
+   0.2
+  ]
+ },
+ "fun/air-dancer-b.png": {
+  "size": [
+   29,
+   70
+  ],
+  "anchor": [
+   14,
+   64
+  ],
+  "frames": 8,
+  "footprint": [
+   0.2,
+   0.2
+  ]
+ },
  "cats/sign.png": {
   "size": [
    110,

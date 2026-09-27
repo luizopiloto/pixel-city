@@ -99,7 +99,10 @@
     park: [],
   };
   const HOUSES = [1, 2, 3, 4, 5, 6].map(n => `houses/house-${n}.png`);
-  const PLAZA_BUILDINGS = ['buildings/shop-6.png', 'buildings/shop-7.png', 'buildings/fastfood.png',
+  // Plaza fronts: food and shops first, so burgers are one choice among many.
+  const PLAZA_BUILDINGS = ['buildings/pizza.png', 'buildings/bistro.png', 'buildings/cakes.png', 'buildings/toys.png',
+    'buildings/pizza.png', 'buildings/bistro.png', 'buildings/cakes.png', 'buildings/toys.png',
+    'buildings/bakery.png', 'buildings/bakery.png', 'buildings/shop-6.png', 'buildings/shop-7.png', 'buildings/fastfood.png',
     'buildings/apartment-1.png', 'buildings/apartment-2.png'];
   const DOWNTOWN_ART = ['shop-7', 'shop-6', 'shop-15', 'brick-3', 'brick-4', 'brick-11', 'brick-12', 'office-8',
     'office-9', 'office-10', 'apartment-1', 'apartment-13', 'apartment-14', 'hotel'].map(n => `buildings/${n}.png`);
@@ -593,6 +596,7 @@
     // tower in the middle of a paved plaza with a lawn ring, trees at the
     // corners, benches and lamps.
     let tvLed = null;                              // where the TV station's LED panels go
+    const late = [];                               // props inside a footprint on purpose, added after the keep-clear pass
     // TV station (one 2×2 downtown block): the studio podium fills most of
     // the block, the tower on its roof; wide paved sidewalks round it with
     // trees, benches, lamps and bins.
@@ -824,7 +828,8 @@
     for (const lot of lots) {                       // swap some bare lots for new buildings
       const onStreet = Math.abs((lot[4] - ROAD0) % PITCH) < 0.01;      // front edge on the block's +v road
       if (onStreet && BARE.includes(lot[0]) && lot[2] - lot[1] >= 1.5 && lot[4] - lot[3] >= 1.25 && rng() < DOWNTOWN_SWAP) {
-        let name = pick(DOWNTOWN_ART);
+        // Now and then a pizza place, cake shop or bakery (they fill the plaza).
+        let name = rng() < 0.06 ? pick(['pizza', 'cakes', 'bakery']).replace(/.*/, n => `buildings/${n}.png`) : pick(DOWNTOWN_ART);
         if (name === 'buildings/office-8.png' && rng() < HELIPAD_ODDS) name = 'buildings/office-5.png';
         const [a, b] = fp(name), out = CANOPIED.includes(name) ? CANOPY : 0;
         if (a <= lot[2] - lot[1] + 0.05 && b + out <= lot[4] - lot[3] + 0.05) {
@@ -866,7 +871,13 @@
         // One building facing the street, a small square behind it.
         const name = pick(PLAZA_BUILDINGS), [a, b] = fp(name);
         const cv = v + 3 - 0.55 - b / 2;
-        artLot(name, u + 1.5 - (name === 'buildings/fastfood.png' ? 0.3 : 0), cv, c.district);
+        const patio = name === 'buildings/fastfood.png' || name === 'buildings/bistro.png';     // drawn on the +u side
+        const cu = u + 1.5 - (patio ? 0.3 : 0);
+        artLot(name, cu, cv, c.district);
+        if (name === 'buildings/toys.png') {           // kites over the roof, a tube dancer by the door
+          late.push(['art/fun/' + pick(['kite-a', 'kite-b']) + '.png', cu, cv, [cu + a / 2 + 0.02, cu + a / 2 + 0.06, cv + b / 2 + 0.02, cv + b / 2 + 0.06]]);
+          artProp(pick(['fun/air-dancer.png', 'fun/air-dancer-b.png']), cu + a / 2 + 0.3, cv + b / 2 - 0.15);
+        }
         const yard = cv - b / 2 - 0.3 - v;
         if (yard > 0.5) {
           prop('props/bench-ne.png', u + 1.0, v + yard * 0.5);
@@ -1211,7 +1222,7 @@
     // intrude on another's entrance (tools/sim.js fails on any).
     const EXTRA = {                                  // sprite ground beyond the footprint: [-u, +u, -v, +v]
       'buildings/brick-4.png': [0, 0, 0, CANOPY], 'buildings/hotel.png': [0, 0, 0, CANOPY], 'landmarks/tv-station.png': [0, 0, 0, 0.36], 'houses/diner.png': [0, 0.18, 0, 0],
-      'buildings/fastfood.png': [0, 0.34, 0, 0], 'buildings/apartment-2.png': [0, 0.22, 0, 0.3],
+      'buildings/fastfood.png': [0, 0.34, 0, 0], 'buildings/bistro.png': [0, 0.58, 0, 0], 'buildings/apartment-2.png': [0, 0.22, 0, 0.3],
       'civic/church.png': [0.04, 0.04, 0, 0.36], 'civic/bank.png': [0, 0, 0, 0.36],
     };
     const keepouts = [], doors = [];
@@ -1242,6 +1253,7 @@
       }
     }
     const blockedDoors = blocked.length;
+    props.push(...late);
     // Drawn over the TV station, just in front of it in paint order.
     if (tvLed) for (const n of ['side', 'front']) props.push([`art/landmarks/tv-ads-${n}.png`, tvLed[0], tvLed[1],
       [tvLed[0] + 0.6, tvLed[0] + 0.7, tvLed[1] + 0.6, tvLed[1] + 0.7]]);

@@ -108,8 +108,11 @@ class Sprite:
         if not inside.any():
             return
         depth = o[0] + a * e1[0] + b * e2[0] + o[1] + a * e1[1] + b * e2[1]
-        color = shader(a, b, xs, ys) * light
-        self._write(inside, ys, xs, depth, color)
+        color = shader(a, b, xs, ys)
+        if color.shape[1] == 4:                      # RGBA: transparent pixels aren't drawn
+            inside = inside & (color[:, 3] > 0)
+            color = color[:, :3]
+        self._write(inside, ys, xs, depth, color * light)
 
     def blob(self, c, r, ramp_, squash=1.0, jag=0.0, shade=0.0):
         """Shaded sphere (squash < 1 flattens it) at world point c, screen
@@ -957,7 +960,7 @@ def fan_top(s):
 
 
 def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", mart=False, helipad=True,
-             canopy=False, glass=None, roof_sign=None):
+             canopy=False, glass=None, roof_sign=None, awning_col=None, roof_units=None, extra=None):
     rng = np.random.default_rng(seed)
     fh = 34 if kind == "brick" else FLOOR               # taller floors fit arched windows
     # A taller canvas only when needed (the canvas size seeds the texture grain).
@@ -980,7 +983,7 @@ def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", mar
                      glass_pal=glass)
     s.box(x0, y0, 0, a, b, hgt, flat(s, wall), wv, wu)
     if kind == "shop":
-        awning(s, x0, y0 + b, a, 22, rng.choice(["#8a4a3e", "#3f6f73", "#6a6a2c"]))
+        awning(s, x0, y0 + b, a, 22, awning_col or rng.choice(["#8a4a3e", "#3f6f73", "#6a6a2c"]))
     if mart:
         market(s, x0, y0, a, b, door, rng)
     if canopy:
@@ -997,7 +1000,8 @@ def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", mar
         for ux, uy in ((x0 + a - 0.36, y0 + 0.16), (x0 + a - 0.36, y0 + 0.46), (x0 + 0.24, y0 + b - 0.36)):
             s.box(ux, uy, hgt, 0.16, 0.16, 7, fan_top(s), flat(s, "#9791a2"), flat(s, "#716f74"))
     else:
-        flat_roof(s, x0, y0, a, b, hgt, "#6e6e6e", units=0 if roof_sign else 2 + (floors > 4), rng=rng)
+        units = roof_units if roof_units is not None else 0 if roof_sign else 2 + (floors > 4)
+        flat_roof(s, x0, y0, a, b, hgt, "#6e6e6e", units=units, rng=rng)
     if roof_sign:                                        # lit board on posts, facing the +v street
         bl = a * 0.72
         sx, sy = x0 + (a - bl) / 2, y0 + b * 0.6
@@ -1005,6 +1009,8 @@ def building(seed, kind="apartment", a=1.4, b=1.0, floors=4, wall="#a47d6a", mar
             s.box(px - 0.015, sy - 0.015, hgt, 0.03, 0.03, 7, flat(s, "#716f74"), flat(s, "#8e8897"), flat(s, "#5b5a5c"))
         s.box(sx, sy - 0.03, hgt + 7, bl, 0.06, 15, flat(s, "#6e2420"),
               sign_face(s, roof_sign, bl * HW, 15, "#8a3a32", "#f0d890", "#f2c06a"), flat(s, "#6e2420"))
+    if extra:
+        extra(s, x0, y0, a, b, hgt)
     s.outline(0.7)
     return s, (a, b)
 
@@ -1151,6 +1157,8 @@ GLYPHS = {
     "V": ["10001", "10001", "10001", "10001", "01010", "01010", "00100"],
     "W": ["10001", "10001", "10001", "10101", "10101", "11011", "10001"],
     "M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+    "Z": ["1111", "0001", "0010", "0110", "0100", "1000", "1111"],
+    "Y": ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
     "'": ["1", "1", "0", "0", "0", "0", "0"],
     "7": ["1111", "0001", "0010", "0010", "0100", "0100", "0100"],
     " ": ["00"] * 7,
@@ -2530,6 +2538,230 @@ def big_dumpster(seed):
     return s
 
 
+# ---------- plaza shops: pizza, bistro, cakes, toys ----------
+
+def cutout(tex):
+    """RGBA shader showing an H × W × 4 image across a face (alpha 0 = hole),
+    read left to right on screen."""
+    H, W = tex.shape[:2]
+
+    def shader(a, b, xs, ys):
+        if len(a) > 1 and xs[a >= 0.5].mean() < xs[a < 0.5].mean():
+            a = 1 - a
+        col = np.clip((a * W).astype(int), 0, W - 1)
+        row = np.clip(((1 - b) * H).astype(int), 0, H - 1)
+        return tex[row, col].astype(float)
+    return shader
+
+
+def pizza_tex(D=30):
+    """A pizza seen face on, a slice missing (to the upper right)."""
+    t = np.zeros((D, D, 4))
+    ys, xs = np.mgrid[0:D, 0:D]
+    cx = cy = (D - 1) / 2
+    r = np.hypot(xs - cx, ys - cy)
+    ang = np.degrees(np.arctan2(-(ys - cy), xs - cx))
+    gone = (ang > 15) & (ang < 70)
+    disc = (r <= D / 2 - 0.5) & ~gone
+    t[disc] = [*rgb("#f0c850"), 255]
+    t[disc & (r > D / 2 - 3)] = [*rgb("#c8843a"), 255]                    # crust
+    t[disc & (r > D / 2 - 1.5)] = [*rgb("#a0662a"), 255]
+    rng = np.random.default_rng(7)
+    for _ in range(9):                                                   # pepperoni
+        a, rr = rng.uniform(0, 360), rng.uniform(2, D / 2 - 5)
+        if 12 < a < 73:
+            continue
+        px, py = cx + rr * math.cos(math.radians(a)), cy - rr * math.sin(math.radians(a))
+        m = (np.hypot(xs - px, ys - py) < 2.2) & disc & (r < D / 2 - 3)
+        t[m] = [*rgb("#b0341f"), 255]
+    for _ in range(6):                                                   # basil
+        a, rr = rng.uniform(0, 360), rng.uniform(2, D / 2 - 5)
+        px, py = int(cx + rr * math.cos(math.radians(a))), int(cy - rr * math.sin(math.radians(a)))
+        if disc[py, px] and r[py, px] < D / 2 - 3:
+            t[py, px] = [*rgb("#3d6a3e"), 255]
+    return t
+
+
+def cake_tex(W=26, H=30):
+    """A three-tier cake with drips of icing and a cherry on top."""
+    t = np.zeros((H, W, 4))
+    def rect(x0, y0, x1, y1, c):
+        t[y0:y1, x0:x1] = [*rgb(c), 255]
+    rect(1, 18, W - 1, H - 1, "#e8a0b8")                                # bottom tier
+    rect(1, 17, W - 1, 20, "#fff4f0")
+    for x in range(2, W - 2, 3):
+        rect(x, 20, x + 1, 22 + (x % 2), "#fff4f0")                    # drips
+    rect(5, 10, W - 5, 18, "#fff4f0")                                   # middle
+    rect(5, 9, W - 5, 11, "#e8a0b8")
+    rect(9, 3, W - 9, 10, "#e8a0b8")                                    # top
+    rect(9, 2, W - 9, 4, "#fff4f0")
+    cx = W // 2
+    rect(cx - 1, 0, cx + 2, 3, "#c8302a")                               # cherry
+    rect(cx + 1, 0, cx + 2, 1, "#3d6a3e")
+    rect(1, H - 2, W - 1, H - 1, "#c89aa8")
+    return t
+
+
+def roof_board(s, x0, y0, a, b, hgt, text, board, ink, w=0.9, z=6, tex=None, tex_w=0.5, tex_h=30, tex_dy=0.01):
+    """A lit text board on two posts over the front of a roof, facing +v,
+    with an optional cut-out picture standing on it."""
+    sx, sy = x0 + (a - w) / 2, y0 + b * 0.62
+    for px in (sx + 0.1, sx + w - 0.1):
+        s.box(px - 0.015, sy - 0.015, hgt, 0.03, 0.03, z, *(flat(s, c) for c in STEEL))
+    s.box(sx, sy - 0.03, hgt + z, w, 0.06, 12, flat(s, rgb(board) * 0.8),
+          sign_face(s, text, w * HW, 12, board, ink, "#f8dc98"), flat(s, rgb(board) * 0.7))
+    if tex is not None:
+        s.face((x0 + (a - tex_w) / 2, sy + tex_dy, hgt + z + 12), (tex_w, 0, 0), (0, 0, tex_h), cutout(tex), light=1.0)
+
+
+def croissant_tex(W=34, H=20):
+    """A golden croissant: a crescent of rolled segments, shaded."""
+    t = np.zeros((H, W, 4))
+    ys, xs = np.mgrid[0:H, 0:W]
+    cx, cy = (W - 1) / 2, H * 1.25
+    r = np.hypot(xs - cx, (ys - cy) * 1.25)
+    ang = np.degrees(np.arctan2(-(ys - cy), xs - cx))                  # 90 at the top
+    half = 20 - 13 * np.abs(ang - 90) / 75                             # plump in the middle, tapered tips
+    body = (np.abs(r - H * 0.8) < half * 0.5) & (np.abs(ang - 90) < 75)
+    seg = np.floor((ang - 18) / 144 * 7) % 2 == 0
+    col = np.where(seg[..., None], rgb("#d8943a"), rgb("#c07a2a"))
+    col = np.where(((r - H * 0.8) < -half * 0.15)[..., None], col * 1.18, col)    # lit upper edge
+    t[..., :3] = np.minimum(col, 255)
+    t[..., 3] = np.where(body, 255, 0)
+    edge = body & ~(np.roll(body, 1, 0) & np.roll(body, -1, 0) & np.roll(body, 1, 1) & np.roll(body, -1, 1))
+    t[edge, :3] = rgb("#7a4a1a")
+    return t
+
+
+def bakery(seed):
+    """Bakery: warm cream front, brown awning, a BAKERY board with a big
+    croissant standing on it, and a bread rack by the door."""
+    def extra(s, x0, y0, a, b, hgt):
+        roof_board(s, x0, y0, a, b, hgt, "BAKERY", "#6a4a2a", "#f8e4b0", w=1.0, tex=croissant_tex(), tex_w=0.53, tex_h=20,
+                   tex_dy=0.05)
+        rx, ry = x0 + a * 0.18, y0 + b + 0.06                            # bread rack outside
+        s.box(rx, ry, 0, 0.22, 0.08, 12, *(flat(s, c) for c in ("#8a6751", "#765743", "#5f4646")))
+        for k in range(3):
+            s.blob((rx + 0.05 + k * 0.06, ry + 0.04, 13), 2.2, ramp("#a8702a", "#c8843a", "#e0a860"), squash=0.6)
+    return building(seed, "shop", a=1.2, b=0.9, floors=2, wall="#efe0c0", awning_col="#6a4a2a", roof_units=0, extra=extra)
+
+
+def pizza_place(seed):
+    extra = lambda s, x0, y0, a, b, hgt: roof_board(s, x0, y0, a, b, hgt, "PIZZA", "#3d6a3e", "#f0ece4",
+                                                   tex=pizza_tex(), tex_w=0.47, tex_h=30)
+    return building(seed, "shop", a=1.4, b=1.0, floors=2, wall="#e8dcc4", awning_col="#b0341f", roof_units=0, extra=extra)
+
+
+def cake_shop(seed):
+    extra = lambda s, x0, y0, a, b, hgt: roof_board(s, x0, y0, a, b, hgt, "CAKES", "#e890b0", "#fff4f0",
+                                                   tex=cake_tex(), tex_w=0.41, tex_h=30)
+    return building(seed, "shop", a=1.2, b=0.9, floors=2, wall="#f0d0dc", awning_col="#e890b0", roof_units=0, extra=extra)
+
+
+def bistro(seed):
+    """Bistro: dark green front, a BISTRO board over the awning, and on the
+    +u side a patio with umbrella tables, planters, a chalkboard and string
+    lights between two posts."""
+    def extra(s, x0, y0, a, b, hgt):
+        s.box(x0 + a * 0.2, y0 + b, 35, a * 0.6, 0.03, 9, flat(s, "#1e2a24"),
+              sign_face(s, "BISTRO", a * 0.6 * HW, 9, "#1e2a24", "#f0d890", "#f2c06a"), flat(s, "#1e2a24"))
+        px = x0 + a
+        s.box(px, y0 + 0.05, 0, 0.55, b - 0.05, 1, flat(s, "#b89a78"), flat(s, "#a0826a"), flat(s, "#8a6e58"))   # deck
+        for ty, col in ((y0 + 0.25, "#3d6a3e"), (y0 + b - 0.25, "#8a3a32")):
+            patio_table(s, px + 0.28, ty, col)
+        for yy in (y0 + 0.07, y0 + b - 0.12):                            # planters
+            s.box(px + 0.44, yy, 1, 0.1, 0.1, 5, *(flat(s, c) for c in ("#8a6751", "#765743", "#5f4646")))
+            s.blob((px + 0.49, yy + 0.05, 9), 3.2, LEAF["green"], shade=0.1)
+        # Chalkboard by the door.
+        s.face((x0 + a * 0.72, y0 + b + 0.12, 0), (0.1, 0, 0), (0, -0.04, 10), flat(s, "#2a2e2a"), light=0.95)
+        # String lights between two posts at the patio's outer corners.
+        for yy in (y0 + 0.03, y0 + b - 0.03):
+            s.box(px + 0.52, yy, 0, 0.02, 0.02, 30, *(flat(s, c) for c in ("#5f4646", "#4b3931", "#3e2f29")))
+        p0, p1 = s.proj(px + 0.53, y0 + 0.04, 30), s.proj(px + 0.53, y0 + b - 0.02, 30)
+        for k in range(15):
+            t = k / 14
+            x = p0[0] + (p1[0] - p0[0]) * t
+            y = p0[1] + (p1[1] - p0[1]) * t + 4 * math.sin(math.pi * t)
+            s.line((x, y), (x, y), rgb("#3e2f29") if k % 2 else rgb("#f8dc98"), px + 0.6 + t)
+    return building(seed, "shop", a=1.3, b=0.95, floors=2, wall="#4a6050", awning_col="#8a3a32", extra=extra)
+
+
+def toy_shop(seed):
+    """Toy shop: sunny yellow front, a TOYS board, balloons tied on the roof."""
+    def extra(s, x0, y0, a, b, hgt):
+        roof_board(s, x0, y0, a, b, hgt, "TOYS", "#3a5a9a", "#f2c06a", w=0.7)
+        for k, col in enumerate(("#c8402a", "#3a8a4a", "#3a5a9a", "#e0a040")):
+            bx, by = x0 + a * 0.2 + k * 0.05, y0 + b * 0.2 + (k % 2) * 0.05
+            top, bot = s.proj(bx, by, hgt + 30 + 3 * k), s.proj(x0 + a * 0.22, y0 + b * 0.22, hgt)
+            s.line(bot, top, rgb("#d8d0c0"), bx + by)
+            c = rgb(col)
+            s.blob((bx, by, hgt + 33 + 3 * k), 3.5, [c * 0.75, c, np.minimum(c * 1.3, 255)], squash=1.15)
+    return building(seed, "shop", a=1.3, b=0.95, floors=2, wall="#e8c060", awning_col="#3f6f73", roof_units=0, extra=extra)
+
+
+KITE_TAIL = 10
+
+
+def kite(seed, p, colors=("#c8402a", "#f2c06a", "#3a5a9a", "#3a8a4a"), off=(0.5, -0.4)):
+    """A diamond kite high over a roof at phase p: it bobs and drifts, its
+    tail of bows waves, its line runs down to the roof (the origin is the
+    shop's ground point; the line starts at roof height)."""
+    s = Sprite(160, 260, 50, 230, seed)
+    roof = 64
+    ku, kv = off[0] + 0.06 * math.sin(p * math.tau), off[1] + 0.04 * math.cos(p * math.tau)
+    kz = 170 + 6 * math.sin(p * math.tau * 2)
+    cx, cy = s.proj(ku, kv, kz)
+    w, h = 9, 13
+    quads = [((0, -h), (w, 0), colors[0]), ((w, 0), (0, h), colors[1]), ((0, h), (-w, 0), colors[2]), ((-w, 0), (0, -h), colors[3])]
+    for (ax, ay), (bx, by), col in quads:
+        s.tri2d((cx, cy), (cx + ax, cy + ay), (cx + bx, cy + by), rgb(col), 1.0)
+    s.line((cx, cy - h), (cx, cy + h), rgb("#5f4646"), 1.1)
+    s.line((cx - w, cy), (cx + w, cy), rgb("#5f4646"), 1.1)
+    for k in range(KITE_TAIL):                                   # tail with bows
+        t = k / KITE_TAIL
+        tx = cx - 2 + 5 * math.sin(p * math.tau + k * 0.7)
+        ty = cy + h + 3 + k * 4
+        s.line((tx, ty), (tx, ty + 3), rgb("#5f4646"), 0.9)
+        if k % 2:
+            s.line((tx - 2, ty + 1), (tx + 2, ty + 1), rgb(colors[k % 4]), 0.95)
+    base = s.proj(0, 0, roof)
+    for k in range(40):                                          # the line, sagging
+        t = k / 39
+        x = base[0] + (cx - base[0]) * t
+        y = base[1] + (cy + h - base[1]) * t + 14 * math.sin(math.pi * t)
+        s.line((x, y), (x, y), rgb("#d8d0c0"), 0.5)
+    return s
+
+
+def air_dancer(seed, p, color="#c8402a", arms="#f2c06a"):
+    """Inflatable tube dancer at phase p: a fan box, a tube swaying more the
+    higher it goes, arms flapping, a face near the top."""
+    s = Sprite(90, 110, 45, 90, seed)
+    s.box(-0.1, -0.1, 0, 0.2, 0.2, 7, *(flat(s, c) for c in ("#5b5a5c", "#4a494b", "#3e3d3f")))
+    c = rgb(color)
+    pal = [c * 0.7, c * 0.9, c, np.minimum(c * 1.25, 255)]
+    top = None
+    for k in range(20):
+        z = 8 + k * 2.6
+        sway = (z - 8) / 52
+        dx = 0.12 * sway * math.sin(p * math.tau + z * 0.08) + 0.05 * sway ** 2 * math.sin(p * math.tau * 2)
+        s.blob((dx, 0, z), 3.4 - 0.6 * sway, pal, squash=0.9)
+        top = (dx, z)
+        if k == 12:                                              # arms
+            arm = rgb(arms)
+            for side in (-1, 1):
+                flap = math.sin(p * math.tau * 2 + (side > 0) * math.pi)
+                x0, y0 = s.proj(dx, 0, z)
+                s.line((x0, y0), (x0 + side * 9, y0 - 6 - 5 * flap), arm, 1.0)
+                s.line((x0, y0 + 1), (x0 + side * 9, y0 - 5 - 5 * flap), arm * 0.8, 1.0)
+    fx, fy = s.proj(top[0], 0, top[1] - 3)                       # face
+    for ex in (-1.5, 1.5):
+        s.line((fx + ex, fy), (fx + ex, fy), rgb("#f4f4f4"), 2.0)
+    s.line((fx - 1, fy + 2), (fx + 1, fy + 2), rgb("#1e1e28"), 2.0)
+    s.outline(0.8)
+    return s
+
+
 # ---------- recreation ----------
 
 REC_WOOD = ("#8a6751", "#765743", "#5f4646")
@@ -2820,6 +3052,17 @@ def main():
         save(trash_can(175, kind), f"street/bin-{kind}.png")
     save(statue(176, "figure"), "street/statue.png")
     save(statue(177, "obelisk"), "street/obelisk.png")
+    # Plaza shops.
+    for fn, name, seed in ((pizza_place, "pizza", 190), (bistro, "bistro", 191), (cake_shop, "cakes", 192),
+                           (toy_shop, "toys", 193), (bakery, "bakery", 198)):
+        spr, (fa, fb) = fn(seed)
+        save(spr, f"buildings/{name}.png", footprint=[fa, fb])
+    save_anim([kite(194, f / 8) for f in range(8)], "fun/kite-a.png", footprint=[0.1, 0.1])
+    save_anim([kite(195, (f / 8 + 0.4) % 1, ("#e0a040", "#c8402a", "#e0a040", "#c8402a"), (-0.3, -0.6))
+               for f in range(8)], "fun/kite-b.png", footprint=[0.1, 0.1])
+    save_anim([air_dancer(196, f / 8) for f in range(8)], "fun/air-dancer.png", footprint=[0.2, 0.2])
+    save_anim([air_dancer(197, (f / 8 + 0.5) % 1, "#3a8a4a", "#e8a0b8") for f in range(8)], "fun/air-dancer-b.png",
+              footprint=[0.2, 0.2])
     # Cat's gas station and supermarket (the plaza district's 2×2 block).
     save(cats_sign(180), "cats/sign.png")
     spr, (fa, fb) = supermarket(181)
