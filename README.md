@@ -53,7 +53,10 @@ come late and rises again after a while on time.
   CSS (a 3× phone fills a ninth of the pixels).
 - **low**: drawn at art-pixel resolution, no blur or colour grade, 30 fps.
 
-It starts at medium on touch screens and dense displays, high otherwise.
+It starts at medium on touch screens and dense displays, high otherwise;
+those devices also bake the scene in half-size chunks, so each bake is a
+shorter hitch. Chunks around the view are baked ahead, toward where the camera
+is heading, in the time left after a frame is painted.
 
 ## Run locally
 
@@ -69,7 +72,7 @@ Then open http://localhost:8080. URL switches for checking things:
 - `?debug`: log startup phase times, the seed and chunk bakes
 - `?quality=high|medium|low`: pin the quality tier
 - `?perf`: an overlay of where frame time goes (per-section ms, chunk bakes,
-  frame gaps over 20 and 33 ms, the canvas size and scale)
+  late and dropped frames, run totals, the canvas size and scale)
 
 `node tools/sim.js [seconds] [seed]` runs the real `js/city.js` headless:
 it reports the city (cells, size, lights, cars, districts),

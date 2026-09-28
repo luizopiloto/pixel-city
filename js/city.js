@@ -2193,7 +2193,8 @@
     const debug = new URLSearchParams(location.search).has('debug');
     // ?perf: an overlay of where frame time goes (see perfNote / perfShow).
     const perf = new URLSearchParams(location.search).has('perf')
-      ? { t: {}, frames: 0, gaps20: 0, gaps33: 0, gapMax: 0, bakes: 0, bakeMs: 0, bakeMax: 0, since: performance.now() }
+      ? { t: {}, frames: 0, gaps20: 0, gaps33: 0, gapMax: 0, bakes: 0, bakeMs: 0, bakeMax: 0, since: performance.now(),
+          all: { frames: 0, dropped: 0, now: 0, ahead: 0 } }
       : null;
     // Adds the time since t0 to section k; returns now. A no-op without ?perf.
     const perfNote = perf ? (k, t0) => { const t = performance.now(); perf.t[k] = (perf.t[k] || 0) + t - t0; return t; }
@@ -2437,10 +2438,13 @@
     // chunks, drawn when first needed and kept in a small LRU cache.
     // The cache holds at least CHUNK_CAP chunks, and always the visible ones
     // plus the ring around them, so prebaking a neighbor never evicts another.
-    const CHUNK_W = 1024, CHUNK_H = 512, CHUNK_CAP = 24;
+    // A device that starts below the high tier gets half-size chunks: each
+    // bake is a smaller hitch.
+    const [CHUNK_W, CHUNK_H] = quality === 'high' ? [1024, 512] : [512, 512], CHUNK_CAP = 24;
     let chunkCap = CHUNK_CAP;
     const chunks = new Map();
     let chunkTick = 0;
+    let bakeEst = 3;                                    // ms, a running average of bake times
     // A chunk that shows water bakes its ground and its sprites apart, so
     // the waves can go between them; any other bakes both together.
     function paintRegion(g, rect, ground = true, sprites = true) {
@@ -2462,7 +2466,7 @@
       g.translate(-i * CHUNK_W, -j * CHUNK_H);
       return { canvas: cv, g };
     };
-    function chunk(i, j) {
+    function chunk(i, j, ahead = false) {
       const key = i + ',' + j;
       let c = chunks.get(key);
       if (!c) {
@@ -2476,7 +2480,9 @@
         if (c.top) paintRegion(c.top.g, rect, false, true);
         chunks.set(key, c);
         if (debug) console.log(`pixel-city: chunk ${key} ${(performance.now() - t0).toFixed(1)} ms, ${chunks.size} cached`);
-        if (perf) { const d = performance.now() - t0; perf.bakes++; perf.bakeMs += d; perf.bakeMax = Math.max(perf.bakeMax, d); }
+        const d = performance.now() - t0;
+        bakeEst += (d - bakeEst) * 0.3;
+        if (perf) { perf.bakes++; perf.bakeMs += d; perf.bakeMax = Math.max(perf.bakeMax, d); perf.all[ahead ? 'ahead' : 'now']++; }
         if (chunks.size > chunkCap) {                      // drop the least recently used
           let old = null;
           for (const o of chunks.values()) if (o !== c && (!old || o.used < old.used)) old = o;
@@ -2489,8 +2495,8 @@
     const chunkRange = ([x, y, w, h]) => [
       Math.floor(x / CHUNK_W), Math.floor((x + w - 1) / CHUNK_W),
       Math.floor(y / CHUNK_H), Math.floor((y + h - 1) / CHUNK_H)];
-    // Draw the visible chunks (baking any missing), then bake at most one
-    // neighbor ahead of time so panning into it doesn't stall.
+    // Draw the visible chunks, baking any missing (see bakeAhead for the
+    // ring around them).
     function drawScene(g, rect) {
       chunkTick++;
       const [i0, i1, j0, j1] = chunkRange(rect);
@@ -2510,12 +2516,38 @@
         g.drawImage(c.comp.canvas, x, y);
         if (c.top) g.drawImage(c.top.canvas, x, y);
       }
-      for (let i = i0 - 1; i <= i1 + 1; i++) for (let j = j0 - 1; j <= j1 + 1; j++) {
-        if (!chunks.has(i + ',' + j) && i >= 0 && j >= 0 && i * CHUNK_W < W && j * CHUNK_H < H) {
-          chunk(i, j);
-          return;
-        }
+    }
+    // Bakes one missing chunk of the ring around the view before it scrolls
+    // in: the one nearest where the camera will be in a second. It runs
+    // after the frame is painted, and only if the bake should fit in the
+    // time left before the next one; a chunk that has waited a second
+    // bakes anyway, so the ring still fills when bakes outlast a frame.
+    let since = 0, velX = 0, velY = 0, lastX = null, lastY = null;
+    function bakeAhead(rect, frameStart, frameMs, dt) {
+      const [x, y, w, h] = rect, cx = x + w / 2, cy = y + h / 2;
+      if (lastX !== null && dt > 0) {
+        const k = 1 - Math.exp(-dt * 4);
+        velX += ((cx - lastX) / dt - velX) * k;
+        velY += ((cy - lastY) / dt - velY) * k;
       }
+      lastX = cx; lastY = cy;
+      const [i0, i1, j0, j1] = chunkRange(rect), px = cx + velX, py = cy + velY;
+      let best = null, bestD = Infinity;
+      for (let i = i0 - 1; i <= i1 + 1; i++) for (let j = j0 - 1; j <= j1 + 1; j++) {
+        if (chunks.has(i + ',' + j) || i < 0 || j < 0 || i * CHUNK_W >= W || j * CHUNK_H >= H) continue;
+        const d = Math.hypot((i + 0.5) * CHUNK_W - px, (j + 0.5) * CHUNK_H - py);
+        if (d < bestD) { bestD = d; best = [i, j]; }
+      }
+      if (!best) { since = 0; return; }
+      if (!since) since = frameStart;
+      setTimeout(() => {
+        if (chunks.has(best[0] + ',' + best[1])) return;
+        const left = frameStart + frameMs - performance.now();
+        if (left > bakeEst + 2 || performance.now() - since > 1000) {
+          since = 0;
+          chunk(best[0], best[1], true);
+        }
+      }, 0);
     }
 
     // Cars: the hero drives planned routes; the others roam.
@@ -3201,6 +3233,7 @@
     let perfEl = null;
     function perfShow() {
       perf.frames++;
+      perf.all.frames++;
       const now = performance.now();
       if (now - perf.since < 2000) return;
       if (!perfEl) {
@@ -3215,6 +3248,7 @@
         `sky ${ms('sky')}  minimap ${ms('minimap')}`,
         `bakes ${perf.bakes}  avg ${(perf.bakeMs / (perf.bakes || 1)).toFixed(1)}  max ${perf.bakeMax.toFixed(1)} ms`,
         `late ${perf.gaps20}  dropped ${perf.gaps33}  longest ${perf.gapMax.toFixed(0)} ms`,
+        `run: ${perf.all.frames} frames  ${perf.all.dropped} dropped  bakes ${perf.all.now} now / ${perf.all.ahead} ahead`,
         `${quality}  canvas ${canvas.width}×${canvas.height}  scale ${view.scale}/${view.display}  chunks ${chunks.size}`,
       ].join('\n');
       Object.assign(perf, { t: {}, frames: 0, gaps20: 0, gaps33: 0, gapMax: 0, bakes: 0, bakeMs: 0, bakeMax: 0, since: now });
@@ -3322,7 +3356,7 @@
       if (perf) {                                       // late and dropped frames: the stutter measure
         const gap = now - last, want = quality === 'low' ? 33.4 : 16.7;
         if (gap > want * 1.25) perf.gaps20++;
-        if (gap > want * 1.9) perf.gaps33++;
+        if (gap > want * 1.9) { perf.gaps33++; perf.all.dropped++; }
         perf.gapMax = Math.max(perf.gapMax, gap);
       }
       last = now;
@@ -3333,6 +3367,7 @@
         follow(dt);
         render();
         adapt(gapMs, performance.now() - t0);
+        bakeAhead([view.x, view.y, view.w, view.h], now, quality === 'low' ? 33.4 : 16.7, dt);
       }
       requestAnimationFrame(frame);
     }
