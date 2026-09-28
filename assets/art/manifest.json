@@ -2200,12 +2200,12 @@
  },
  "nuclear/cooling-tower.png": {
   "size": [
-   206,
+   209,
    261
   ],
   "anchor": [
-   103,
-   209
+   104,
+   208
   ],
   "footprint": [
    2.3,
@@ -2229,29 +2229,29 @@
  },
  "nuclear/reactor.png": {
   "size": [
-   200,
-   186
+   213,
+   188
   ],
   "anchor": [
-   96,
+   109,
    138
   ],
   "footprint": [
-   1.9,
-   1.9
+   2.1399999999999997,
+   2.1399999999999997
   ]
  },
  "nuclear/turbine-hall.png": {
   "size": [
-   290,
-   197
+   416,
+   263
   ],
   "anchor": [
-   145,
-   127
+   198,
+   157
   ],
   "footprint": [
-   3.0,
+   4.6,
    1.4
   ]
  },
@@ -2311,6 +2311,68 @@
   "anchor": [
    118,
    105
+  ]
+ },
+ "nuclear/pylon.png": {
+  "size": [
+   170,
+   162
+  ],
+  "anchor": [
+   85,
+   144
+  ]
+ },
+ "nuclear/casks.png": {
+  "size": [
+   218,
+   131
+  ],
+  "anchor": [
+   109,
+   77
+  ],
+  "footprint": [
+   2.2,
+   1.2
+  ]
+ },
+ "nuclear/generators.png": {
+  "size": [
+   167,
+   123
+  ],
+  "anchor": [
+   74,
+   76
+  ],
+  "footprint": [
+   1.7599999999999998,
+   0.9
+  ]
+ },
+ "nuclear/control.png": {
+  "size": [
+   190,
+   138
+  ],
+  "anchor": [
+   95,
+   93
+  ],
+  "footprint": [
+   1.6,
+   1.2
+  ]
+ },
+ "nuclear/watchtower.png": {
+  "size": [
+   56,
+   118
+  ],
+  "anchor": [
+   28,
+   109
   ]
  },
  "civic/hospital.png": {

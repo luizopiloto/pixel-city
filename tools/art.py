@@ -3471,21 +3471,31 @@ def power_station(seed):
 # ---------- nuclear power plant ----------
 
 def cooling_tower(seed, R=1.15, H=170):
-    """Hyperbolic cooling tower (radius R tiles at the base, H px tall); its
-    steam is tower_steam, drawn over everything."""
+    """Hyperbolic cooling tower (radius R tiles at the base, H px tall): a
+    dark air-inlet gap at the foot with the raker legs showing, the shell in
+    courses with weathering streaks running down from the lip, a darker lip;
+    its steam is tower_steam, drawn over everything."""
     s = Sprite(420, 460, 210, 400, seed)
-    for z in range(0, H, 5):                                   # the waist narrows then flares at the top
-        t = z / H
-        r = R * (0.62 + 0.38 * ((t - 0.72) / 0.72) ** 2)
-        shade = 1.0 if (z // 5) % 2 else 0.96
-        ring(s, r, z, 6, lambda k, shade=shade: flat(s, rgb("#d8d4cc") * shade, 4), n=28)
-    rt = R * 0.72
-    ring(s, rt + 0.01, H - 3, 4, lambda k: flat(s, "#bdb3a2", 3), n=28)
-    disk(s, rt, H, flat(s, "#4a494b", 2), n=28)
-    for k in range(6):                                         # legs round the base
-        a = 2 * math.pi * k / 6
-        s.box(R * 0.98 * math.cos(a) - 0.03, R * 0.98 * math.sin(a) - 0.03, 0, 0.06, 0.06, 10,
-              *(flat(s, c) for c in ("#bdb3a2", "#a69c8c", "#8e8680")))
+    rng = np.random.default_rng(seed)
+    streaks = rng.random(28) < 0.35
+    shell = lambda z: R * (0.62 + 0.38 * ((z / H - 0.72) / 0.72) ** 2)
+    ring(s, R * 0.97, 0, 12, lambda k: flat(s, "#2a2a2e", 2), n=28)              # the inlet gap, dark inside
+    for k in range(14):                                                        # raker legs, in pairs
+        a = 2 * math.pi * k / 14
+        for da in (-0.05, 0.05):
+            x, y = R * math.cos(a + da), R * math.sin(a + da)
+            s.line(s.proj(x, y, 0), s.proj(x * 0.99, y * 0.99, 12), rgb("#bdb3a2"), x + y + 0.02)
+    for z in range(12, H, 5):
+        r = shell(z)
+        base = rgb("#d8d4cc") * (1.0 if (z // 5) % 2 else 0.965)
+        wear = min(1.0, (H - z) / 60)                                           # streaks fade downward
+        def face_sh(k, base=base, wear=wear):
+            c = base * (0.86 if streaks[k] and wear < 1 else 1.0) if z > H - 60 else base
+            return flat(s, c, 4)
+        ring(s, r, z, 6, face_sh, n=28)
+    rt = shell(H)
+    ring(s, rt + 0.02, H - 4, 5, lambda k: flat(s, "#a69c8c", 3), n=28)       # lip
+    disk(s, rt, H + 1, flat(s, "#3a3a3e", 2), n=28)
     s.outline(0.72)
     return s
 
@@ -3508,23 +3518,31 @@ def tower_steam(seed, p, R=1.15, H=170):
 
 
 def reactor(seed):
-    """Containment building: a round concrete drum under a dome, a small
-    annex and a vent stack beside it."""
+    """Containment building: a concrete apron, a drum with tendon lines, a
+    dome in panels with a hatch, an annex with a door toward +v, a vent
+    stack in red and white bands."""
     s = Sprite(260, 300, 130, 230, seed)
     R, H = 0.95, 70
-    ring(s, R, 0, H, lambda k: banded(s, [rgb("#d8d0c0"), rgb("#ccc4b4")], 7, axis=1), n=28)
-    for k in range(10):                                        # dome
+    ring(s, R + 0.12, 0, 4, lambda k: flat(s, "#b3ab9e", 4), n=28)
+    disk(s, R + 0.12, 4, flat(s, "#c8c2b6", 4), n=28)
+    drum = lambda k: (lambda a_, b_, xs, ys: np.where((np.mod(xs, 6) == 0)[:, None], rgb("#c8c0b0"),
+                                                      rgb("#dcd4c4") * (0.97 + 0.06 * b_[:, None])))
+    ring(s, R, 4, H - 4, drum, n=28)
+    ring(s, R + 0.02, H - 3, 4, lambda k: flat(s, "#bdb3a2", 3), n=28)
+    for k in range(10):                                        # dome in panels
         t0 = k / 10
         r = R * math.cos(t0 * math.pi / 2)
-        ring(s, max(r, 0.05), H + math.sin(t0 * math.pi / 2) * 46, 5, lambda i: flat(s, "#e0d8c8", 3), n=28)
+        tone = rgb("#e4dccc") * (1.0 if k % 3 else 0.95)
+        ring(s, max(r, 0.05), H + math.sin(t0 * math.pi / 2) * 46, 5, lambda i, tone=tone: flat(s, tone * (0.97 if i % 4 == 0 else 1.0), 3), n=28)
     s.blob((0, 0, H + 48), 5, ramp("#c8c2b6", "#e0d8c8", "#f0ece4"), squash=0.6)
-    s.box(-0.3, R - 0.1, 0, 0.6, 0.35, 30, flat(s, "#bdb3a2"),
-          wall_shader(s, "#d8d0c0", 0.6 * 71.6, 30, 2, spans(3), (0.4, 0.6), None, "plain"),
-          wall_shader(s, "#d8d0c0", 0.35 * 71.6, 30, 2, spans(1), None, None, "plain"))
-    for z in range(0, 110, 5):                                 # vent stack
-        ring(s, 0.09, z, 5, lambda k, z=z: flat(s, "#e0d8c8" if (z // 20) % 2 else "#c8402a", 3), n=10, cx=R + 0.25, cy=-0.3)
+    s.box(-0.14, R - 0.05, 24, 0.28, 0.06, 18, *(flat(s, c) for c in ("#8e8680", "#76706a", "#6a645e")))   # equipment hatch
+    s.box(-0.35, R - 0.02, 4, 0.7, 0.42, 30, flat(s, "#bdb3a2"),
+          wall_shader(s, "#d0c8b8", 0.7 * 71.6, 30, 2, spans(3), (0.42, 0.58), None, "plain"),
+          wall_shader(s, "#d0c8b8", 0.42 * 71.6, 30, 2, spans(1), None, None, "plain"))
+    for z in range(0, 118, 5):                                 # vent stack
+        ring(s, 0.09, z, 5, lambda k, z=z: flat(s, "#e0d8c8" if (z // 20) % 2 else "#b0341f", 3), n=10, cx=R + 0.25, cy=-0.3)
     s.outline(0.72)
-    return s, (2 * R, 2 * R)
+    return s, (2 * R + 0.24, 2 * R + 0.24)
 
 
 def atom_tex(W=64, H=40):
@@ -3572,6 +3590,125 @@ def atom_sign(seed):
     return s
 
 
+def pylon(seed):
+    """High-voltage transmission tower: a tapering lattice with two cross
+    arms and hanging insulators, wires running off along v."""
+    s = Sprite(170, 240, 85, 200, seed)
+    H = 130
+    half = lambda z: 0.22 * (1 - z / H) + 0.05
+    col = rgb("#5e5a64")
+    for cx, cy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+        p0, p1 = s.proj(cx * half(0), cy * half(0), 0), s.proj(cx * half(H), cy * half(H), H)
+        for dx in (0, 1):
+            s.line((p0[0] + dx, p0[1]), (p1[0] + dx, p1[1]), col * (1.0 if dx else 0.8), (cx + cy) * 0.1)
+    for z0 in range(0, H, 16):                                  # lattice
+        z1 = z0 + 16
+        for (ax, ay), (bx, by) in (((-1, 1), (1, 1)), ((1, -1), (1, 1))):
+            s.line(s.proj(ax * half(z0), ay * half(z0), z0), s.proj(bx * half(z1), by * half(z1), z1), col * 0.9, 0.15)
+            s.line(s.proj(bx * half(z0), by * half(z0), z0), s.proj(ax * half(z1), ay * half(z1), z1), col * 0.9, 0.15)
+    for z, w in ((96, 0.55), (120, 0.4)):                        # cross arms along u, insulators, wires along v
+        for dz in (0, 1, 2):
+            s.line(s.proj(-w, 0, z + dz), s.proj(w, 0, z + dz), col * (0.8 if dz == 2 else 1.0), 0.3)
+        for x in (-w + 0.05, w - 0.05):
+            s.line(s.proj(x, 0, z), s.proj(x, 0, z - 8), rgb("#c8b8a0"), 0.35)
+            for d in (-1, 1):
+                s.line(s.proj(x, 0, z - 8), s.proj(x, d * 0.9, z - 18), rgb("#2e2d30"), 0.36)
+    s.outline(0.85)
+    return s
+
+
+def dry_casks(seed):
+    """Dry cask storage: a concrete pad with two rows of tall gray casks."""
+    s = Sprite(300, 190, 150, 120, seed)
+    a, b = 2.2, 1.2
+    x0, y0 = -a / 2, -b / 2
+    s.box(x0, y0, 0, a, b, 3, *(flat(s, c) for c in ("#c8c2b6", "#b3ab9e", "#9c9486")))
+    for r in range(2):
+        for k in range(5):
+            cx, cy = x0 + 0.24 + k * 0.43, y0 + 0.3 + r * 0.6
+            ring(s, 0.15, 3, 30, lambda i: banded(s, [rgb("#a8a4ae"), rgb("#9c98a2")], 5, axis=1), n=14, cx=cx, cy=cy)
+            disk(s, 0.15, 33, flat(s, "#bdb8c2", 3), n=14, cx=cx, cy=cy)
+            s.blob((cx, cy, 34), 2, ramp("#716f74", "#8e8a94", "#a8a4ae"), squash=0.5)
+    s.outline(0.75)
+    return s, (a, b)
+
+
+def generator_house(seed):
+    """Emergency diesel generator house: louvred concrete walls, three
+    exhaust stacks, a fuel tank on saddles at its side."""
+    s = Sprite(260, 220, 130, 150, seed)
+    a, b, h = 1.4, 0.9, 30
+    x0, y0 = -a / 2, -b / 2
+
+    def wall(length_px, door):
+        def sh(a_, b_, xs, ys):
+            along, z = a_ * length_px, b_ * h
+            out = np.repeat(rgb("#c8c2b6")[None], len(a_), 0)
+            louv = (z > 12) & (z < 24) & (np.mod(along, 14) > 3) & (np.mod(along, 14) < 11) & (np.mod(z, 2) < 1)
+            out = np.where(louv[:, None], rgb("#6e6a64"), out)
+            if door:
+                d = (np.abs(along - length_px * 0.5) < 6) & (z < 20)
+                out = np.where(d[:, None], rgb("#5b5a5c"), out)
+            return out + (s.grain[ys, xs] - 0.5)[:, None] * 4
+        return sh
+    s.box(x0, y0, 0, a, b, h, flat(s, "#b3ab9e"), wall(a * 71.6, True), wall(b * 71.6, False))
+    for k in range(3):
+        cx = x0 + 0.3 + k * 0.4
+        ring(s, 0.05, h, 26, lambda i: flat(s, "#716f74", 3), n=10, cx=cx, cy=y0 + 0.3)
+        disk(s, 0.05, h + 26, flat(s, "#2e2e32", 2), n=10, cx=cx, cy=y0 + 0.3)
+    for k in range(8):                                        # fuel tank on its side, along v
+        t0 = k / 8
+        s.face((x0 + a + 0.06 + 0.24 * math.sin(math.pi * t0) * 0, y0 + 0.05, 4 + 16 * math.sin(math.pi * t0)),
+               (0, b - 0.1, 0), (0.24 / 8, 0, 16 * (math.sin(math.pi * (t0 + 1 / 8)) - math.sin(math.pi * t0))),
+               flat(s, rgb("#d8d4cc") * (0.8 + 0.25 * t0), 3))
+    s.box(x0 + a + 0.06, y0 + 0.05, 0, 0.3, b - 0.1, 12, *(flat(s, c) for c in ("#d8d4cc", "#c8c4bc", "#b8b4ac")))
+    s.outline(0.75)
+    return s, (a, b)
+
+
+def control_building(seed):
+    """Control building: a squat reinforced block, slit windows, a door in
+    a recess, antennas on the roof."""
+    s = Sprite(260, 220, 130, 160, seed)
+    a, b, h = 1.6, 1.2, 38
+    x0, y0 = -a / 2, -b / 2
+
+    def wall(length_px, door):
+        def sh(a_, b_, xs, ys):
+            along, z = a_ * length_px, b_ * h
+            out = np.where((np.mod(z, 10) < 1)[:, None], rgb("#bcb4a4"), rgb("#d0c8b8"))
+            slit = (z > 24) & (z < 30) & (np.mod(along, 16) > 6) & (np.mod(along, 16) < 12)
+            out = np.where(slit[:, None], np.array(GLASS_BLUE)[(xs + ys) % 4], out)
+            if door:
+                d = (np.abs(along - length_px * 0.5) < 7) & (z < 18)
+                out = np.where(d[:, None], rgb("#5b5a5c"), out)
+            return out + (s.grain[ys, xs] - 0.5)[:, None] * 4
+        return sh
+    s.box(x0, y0, 0, a, b, h, flat(s, "#b3ab9e"), wall(a * 71.6, True), wall(b * 71.6, False))
+    s.box(x0 - 0.04, y0 - 0.04, h, a + 0.08, b + 0.08, 4, *(flat(s, c) for c in ("#c8c0b0", "#b3ab9e", "#9c9486")))
+    for x, hh in ((x0 + 0.3, 26), (x0 + 0.5, 18)):
+        s.box(x, y0 + 0.3, h + 4, 0.02, 0.02, hh, *(flat(s, c, 2) for c in STEEL))
+    s.blob((x0 + a - 0.4, y0 + 0.4, h + 12), 5, ramp("#9a9488", "#c8c2b6", "#e8e2d6"), squash=0.55, shade=0.2)
+    s.outline(0.72)
+    return s, (a, b)
+
+
+def watchtower(seed):
+    """Guard watchtower: four legs, a glazed cab with a roof and a searchlight."""
+    s = Sprite(120, 190, 60, 160, seed)
+    steel = [flat(s, c, 2) for c in ("#8e8a94", "#716f74", "#5b5a5c")]
+    for x, y in ((-0.14, -0.14), (0.11, -0.14), (0.11, 0.11), (-0.14, 0.11)):
+        s.box(x, y, 0, 0.03, 0.03, 70, *steel)
+    for z in (22, 46):
+        s.line(s.proj(-0.13, 0.12, z), s.proj(0.12, 0.12, z + 22), rgb("#716f74"), 0.25)
+    cab = lambda a_, b_, xs, ys: np.where(((b_ > 0.35) & (b_ < 0.85))[:, None], np.array(GLASS_BLUE)[(xs + ys) % 4] * 1.15, rgb("#c8c4bc"))
+    s.box(-0.18, -0.18, 70, 0.36, 0.36, 22, flat(s, "#c8c4bc"), cab, cab)
+    s.box(-0.22, -0.22, 92, 0.44, 0.44, 3, *(flat(s, c) for c in ("#5b5a5c", "#4a494b", "#3e3d3f")))
+    s.blob((0.12, 0.12, 97), 2.5, ramp("#c8a030", "#f2d070", "#fff4c0"))
+    s.outline(0.8)
+    return s
+
+
 def rd_lab(seed):
     """R&D lab: two white floors with ribbon windows in blue glass, a glass
     entrance, rooftop plant and a small dish, a LAB sign."""
@@ -3598,7 +3735,6 @@ def rd_lab(seed):
         s.box(x0 + 0.3 + k * 0.45, y0 + 0.25, h + 3, 0.28, 0.28, 10, fan_top(s), flat(s, "#bdb3a2"), flat(s, "#a69c8c"))
     s.box(x0 + a - 0.45, y0 + 0.3, h + 3, 0.05, 0.05, 12, *(flat(s, cc) for cc in STEEL))
     s.blob((x0 + a - 0.43, y0 + 0.32, h + 20), 6, ramp("#9a9488", "#c8c2b6", "#e8e2d6"), squash=0.55, shade=0.2)
-    wall_sign(s, x0 + a * 0.5, y0 + b, 24, 0.44, "LAB", "#3a6ab0", "#f0f2f4", 11)
     s.outline(0.72)
     return s, (a, b)
 
@@ -3627,29 +3763,46 @@ def check_canopy(seed, span=3.0):
             s.box(x, y, 0, 0.04, 0.04, 34, *(flat(s, cc, 2) for cc in STEEL))
     band = lambda length: (lambda a_, b_, xs, ys: np.where(((b_ > 0.3) & (b_ < 0.7))[:, None], rgb("#c8a030"), rgb("#2c3548")))
     s.box(x0, y0, 34, span, d, 12, flat(s, "#c8c4bc"), band(span), band(d))
-    wall_sign(s, 0, y0 + d, 35, 1.3, "SECURITY", "#2c3548", "#f2c06a", 10)
     for x in (x0 + 0.2, x0 + span - 0.24):                               # yellow bollards
         s.box(x, y0 + d + 0.1, 0, 0.04, 0.04, 8, *(flat(s, "#c8a030") for _ in range(3)))
     s.outline(0.8)
     return s
 
 
-def turbine_hall(seed, a=3.0, b=1.4):
-    """Turbine hall: a tall ribbed shed with a band of high windows and a
-    POWER board."""
-    s = Sprite(420, 300, 210, 200, seed)
-    x0, y0, h = -a / 2, -b / 2, 52
+def turbine_hall(seed, a=4.6, b=1.4):
+    """Turbine hall: a tall blue-gray clad hall with a band of high windows,
+    a lower annex along its front, roof vents and a glazed monitor, and two
+    main transformers with fins and bushings at its +u end."""
+    s = Sprite(520, 320, 260, 210, seed)
+    x0, y0, h = -a / 2, -b / 2, 56
 
-    def wall(length):
+    def wall(length_px):
         def sh(a_, b_, xs, ys):
-            out = ribs(s, "#b8c4cc", 3)(a_, b_, xs, ys)
-            z = b_ * h
-            win = (z > 36) & (z < 46)
-            return np.where(win[:, None], np.array(GLASS_BLUE)[(xs + ys) % 4] * 1.1, out)
+            along, z = a_ * length_px, b_ * h
+            out = np.where((np.mod(along, 3) < 1)[:, None], rgb("#a4b0ba"), rgb("#b8c4cc"))
+            win = (z > 40) & (z < 50) & (np.mod(along, 12) > 2)
+            out = np.where(win[:, None], np.array(GLASS_BLUE)[(xs + ys) % 4] * 1.1, out)
+            out = np.where((z < 4)[:, None], rgb("#a69c8c"), out)
+            return out + (s.grain[ys, xs] - 0.5)[:, None] * 3
         return sh
-    s.box(x0, y0, 0, a, b, h, flat(s, "#8e98a0"), wall(a), wall(b))
+    s.box(x0, y0, 0, a, b, h, flat(s, "#8e98a0"), wall(a * 71.6), wall(b * 71.6))
     s.box(x0 - 0.03, y0 - 0.03, h, a + 0.06, b + 0.06, 3, *(flat(s, c) for c in ("#7a8a96", "#6a7a86", "#5a6a76")))
-    roof_board(s, x0, y0, a, b, h, "POWER", "#2c3548", "#f2c06a", w=1.0)
+    mon = lambda a_, b_, xs, ys: np.where((b_ > 0.3)[:, None], np.array(GLASS_BLUE)[(xs + ys) % 4] * 1.15, rgb("#7a8a96"))
+    s.box(x0 + 0.3, y0 + 0.45, h + 3, a - 0.6, 0.5, 8, flat(s, "#6a7a86"), mon, mon)
+    for k in range(3):
+        s.box(x0 + 0.5 + k * 1.4, y0 + 0.1, h + 3, 0.22, 0.22, 7, fan_top(s), flat(s, "#9791a2"), flat(s, "#716f74"))
+    annex = lambda a_, b_, xs, ys: np.where(((np.mod(a_ * a * 71.6, 18) > 4) & (b_ > 0.35) & (b_ < 0.75))[:, None],
+                                            np.array(GLASS_BLUE)[(xs + ys) % 4] * 1.05, rgb("#c8ccd0"))
+    s.box(x0 + 0.2, y0 + b, 0, a - 0.4, 0.3, 22, flat(s, "#a4b0ba"), annex, flat(s, "#b8c0c6"))
+    for k in range(2):                                        # main transformers at the +u end
+        tx = x0 + a + 0.12
+        ty = y0 + 0.1 + k * 0.62
+        s.box(tx, ty, 0, 0.38, 0.5, 22, *(flat(s, c) for c in ("#7a8a7a", "#6a7a6a", "#5a6a5a")))
+        for f in range(5):
+            s.box(tx + 0.38, ty + 0.04 + f * 0.09, 2, 0.05, 0.03, 18, *(flat(s, "#5a6a5a") for _ in range(3)))
+        for ix in (0.08, 0.19, 0.3):
+            s.box(tx + ix, ty + 0.22, 22, 0.02, 0.02, 12, *(flat(s, "#c8b8a0") for _ in range(3)))
+            s.blob((tx + ix + 0.01, ty + 0.23, 35), 1.6, ramp("#8a6a4a", "#c8b8a0", "#e8e2d6"))
     s.outline(0.72)
     return s, (a, b)
 
@@ -4077,11 +4230,18 @@ def main():
     save(atom_sign(243), "nuclear/sign.png")
     spr, (fa, fb) = rd_lab(244)
     save(spr, "nuclear/lab.png", footprint=[fa, fb])
-    spr, (fa, fb) = building(245, "office", a=1.7, b=1.1, floors=4, wall="#c8c4bc", helipad=False, glass=GLASS_BLUE,
-                             roof_sign="ADMIN")
+    spr, (fa, fb) = building(245, "office", a=1.7, b=1.1, floors=4, wall="#c8c4bc", helipad=False, glass=GLASS_BLUE)
     save(spr, "nuclear/office.png", footprint=[fa, fb])
     save(guardhouse(246), "nuclear/guardhouse.png")
     save(check_canopy(247), "nuclear/checkpoint.png")
+    save(pylon(248), "nuclear/pylon.png")
+    spr, (fa, fb) = dry_casks(249)
+    save(spr, "nuclear/casks.png", footprint=[fa, fb])
+    spr, (fa, fb) = generator_house(252)
+    save(spr, "nuclear/generators.png", footprint=[fa + 0.36, fb])
+    spr, (fa, fb) = control_building(253)
+    save(spr, "nuclear/control.png", footprint=[fa, fb])
+    save(watchtower(254), "nuclear/watchtower.png")
     # Hospital.
     spr, (fa, fb) = hospital(250)
     save(spr, "civic/hospital.png", footprint=[fa, fb])

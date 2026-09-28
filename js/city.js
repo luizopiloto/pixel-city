@@ -769,27 +769,32 @@
     let nuclear = null;
     function nuclearBlock({ u0, u1, v0, v1 }) {
       concrete(u0, v0, u1 - u0, v1 - v0);
-      // Back: two cooling towers and the reactor; middle: substations and the
-      // turbine hall; front left: the staff car park behind a security
-      // checkpoint; front right: the admin office and the R&D lab on a lawn.
-      for (const cu of [u0 + 2.6, u0 + 6.0]) {
-        late.push(['art/nuclear/cooling-tower.png', cu, v0 + 2.7, [cu - 1.15, cu + 1.15, v0 + 1.55, v0 + 3.85]],
-          ['art/nuclear/steam.png', cu, v0 + 2.7, [cu - 0.05, cu + 0.05, v0 + 2.65, v0 + 2.75]]);
+      // Back: two cooling towers, two reactor units, guard towers at the
+      // corners, the water tower; middle: the switchyard fed by pylons, the
+      // turbine hall with its transformers, the control building; then dry
+      // cask storage, the generator house and the fuel store; front left the
+      // staff car park behind a security checkpoint, front right the admin
+      // office and the R&D lab on a lawn.
+      for (const cu of [u0 + 2.4, u0 + 5.5]) {
+        late.push(['art/nuclear/cooling-tower.png', cu, v0 + 2.4, [cu - 1.15, cu + 1.15, v0 + 1.25, v0 + 3.55]],
+          ['art/nuclear/steam.png', cu, v0 + 2.4, [cu - 0.05, cu + 0.05, v0 + 2.35, v0 + 2.45]]);
       }
-      artLot('nuclear/reactor.png', u0 + 11.0, v0 + 2.8);
-      artProp('industry/water-tower.png', u0 + 13.9, v0 + 5.6);
-      artLot('industry/power-station.png', u0 + 2.6, v0 + 7.0);
-      artLot('industry/power-station.png', u0 + 5.2, v0 + 7.0);
-      artLot('nuclear/turbine-hall.png', u0 + 10.4, v0 + 7.0);
-      artLot('port/warehouse-b.png', u0 + 8.6, v0 + 2.5);                     // fuel storage
-      artLot('industry/workshop.png', u0 + 7.4, v0 + 7.2);                    // maintenance
-      artProp('industry/dish.png', u0 + 6.9, v0 + 4.8);
-      artProp('industry/barrels.png', u0 + 6.3, v0 + 8.6);
-      artProp('industry/cell-tower.png', u0 + 13.2, v0 + 1.2);
-      artProp('port/stack-a.png', u0 + 13.6, v0 + 8.6);
-      artProp('port/stack-b.png', u0 + 14.2, v0 + 7.4);
-      artProp('industry/truck-blue.png', u0 + 12.6, v0 + 9.1);
-      artProp('industry/truck-red-r1.png', u0 + 8.6, v0 + 4.4);
+      artLot('nuclear/reactor.png', u0 + 8.9, v0 + 2.5);
+      artLot('nuclear/reactor.png', u0 + 11.8, v0 + 2.5);
+      artProp('industry/water-tower.png', u0 + 14.1, v0 + 2.8);
+      for (const wu of [u0 + 0.45, u1 - 0.45]) late.push(['art/nuclear/watchtower.png', wu, v0 + 0.45, pointBox(wu, v0 + 0.45)]);
+      artLot('industry/power-station.png', u0 + 2.2, v0 + 6.2);
+      artLot('industry/power-station.png', u0 + 4.6, v0 + 6.2);
+      for (const pv of [v0 + 4.9, v0 + 8.3]) artProp('nuclear/pylon.png', u0 + 0.75, pv);
+      artProp('industry/dish.png', u0 + 6.9, v0 + 4.6);
+      artLot('nuclear/turbine-hall.png', u0 + 10.3, v0 + 5.6);
+      artLot('nuclear/control.png', u0 + 14.0, v0 + 5.6);
+      artLot('nuclear/casks.png', u0 + 7.4, v0 + 8.2);
+      artLot('nuclear/generators.png', u0 + 10.2, v0 + 8.1);
+      artLot('port/warehouse-b.png', u0 + 13.0, v0 + 8.1);                     // fuel store
+      artProp('industry/truck-blue.png', u0 + 4.2, v0 + 8.9);
+      artProp('industry/barrels.png', u0 + 5.8, v0 + 9.0);
+      artProp('port/stack-a.png', u0 + 2.2, v0 + 8.9);
       // Car park: lined asphalt, two rows either side of an aisle.
       const pu1 = u0 + 9;
       // Rows: stalls, aisle, stalls back to back, and the aisle in from the checkpoint.
@@ -799,6 +804,7 @@
       for (let k = 0; k < 18; k++) {
         const u = u0 + 0.25 + k * 0.5;
         for (const [v, dir] of [[v0 + 10.65, 1], [v0 + 12.35, -1], [v0 + 13.65, 1]]) {
+          if (v > v0 + 13 && u > gcol - 0.2 && u < gcol + 3.2) continue;           // the lanes in, under the canopy
           if (rng() < 0.55) parkedCars.push({ u, v, head: [0, rng() < 0.3 ? -dir : dir], type: pick(TYPES) });
         }
       }
@@ -1611,7 +1617,7 @@
     // outside the footprint, free of props; count buildings that
     // intrude on another's entrance (tools/sim.js fails on any).
     const EXTRA = {                                  // sprite ground beyond the footprint: [-u, +u, -v, +v]
-      'buildings/brick-4.png': [0, 0, 0, CANOPY], 'buildings/hotel.png': [0, 0, 0, CANOPY], 'civic/hospital.png': [0, 0, 0, 0.5], 'landmarks/tv-station.png': [0, 0, 0, 0.36], 'houses/diner.png': [0, 0.18, 0, 0],
+      'buildings/brick-4.png': [0, 0, 0, CANOPY], 'buildings/hotel.png': [0, 0, 0, CANOPY], 'civic/hospital.png': [0, 0, 0, 0.5], 'nuclear/reactor.png': [0, 0, 0, 0.3], 'nuclear/turbine-hall.png': [0, 0.55, 0, 0.3], 'landmarks/tv-station.png': [0, 0, 0, 0.36], 'houses/diner.png': [0, 0.18, 0, 0],
       'buildings/fastfood.png': [0, 0.34, 0, 0], 'buildings/bistro.png': [0, 0.58, 0, 0], 'buildings/apartment-2.png': [0, 0.22, 0, 0.3],
       'civic/church.png': [0.04, 0.04, 0, 0.36], 'civic/bank.png': [0, 0, 0, 0.36],
     };
