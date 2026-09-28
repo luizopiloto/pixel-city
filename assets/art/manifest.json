@@ -1419,6 +1419,20 @@
   ],
   "tile": true
  },
+ "ground/concrete.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/concrete-b.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
  "ground/lot-lines-u.png": {
   "size": [
    128,
@@ -1775,22 +1789,22 @@
  },
  "port/ship-a.png": {
   "size": [
-   253,
-   151
+   256,
+   153
   ],
   "anchor": [
-   115,
-   82
+   118,
+   84
   ]
  },
  "port/ship-b.png": {
   "size": [
-   253,
-   162
+   256,
+   165
   ],
   "anchor": [
-   115,
-   93
+   118,
+   96
   ]
  },
  "port/stack-a-r1.png": {
@@ -1825,71 +1839,71 @@
  },
  "port/ship-a-r1.png": {
   "size": [
-   253,
-   160
+   256,
+   162
   ],
   "anchor": [
    138,
-   91
+   93
   ]
  },
  "port/ship-b-r1.png": {
   "size": [
-   253,
-   152
+   256,
+   155
   ],
   "anchor": [
    138,
-   83
+   86
   ]
  },
  "port/crane.png": {
   "size": [
-   186,
-   181
+   210,
+   191
   ],
   "anchor": [
-   56,
-   157
+   70,
+   166
   ]
  },
  "port/crane-r1.png": {
   "size": [
-   186,
-   157
+   210,
+   172
   ],
   "anchor": [
-   56,
-   133
+   70,
+   147
   ]
  },
  "port/crane-r2.png": {
   "size": [
-   186,
-   157
+   210,
+   173
   ],
   "anchor": [
-   130,
-   133
+   140,
+   148
   ]
  },
  "port/crane-r3.png": {
   "size": [
-   186,
-   181
+   210,
+   191
   ],
   "anchor": [
-   130,
-   157
+   140,
+   166
   ]
  },
  "port/warehouse-a.png": {
   "size": [
-   236,
-   152
+   237,
+   155
   ],
   "anchor": [
-   118,
+   119,
    93
   ],
   "footprint": [
@@ -1899,11 +1913,11 @@
  },
  "port/warehouse-b.png": {
   "size": [
-   204,
-   136
+   205,
+   141
   ],
   "anchor": [
-   102,
+   103,
    85
   ],
   "footprint": [
@@ -1943,8 +1957,8 @@
  },
  "industry/plant.png": {
   "size": [
-   278,
-   168
+   281,
+   182
   ],
   "anchor": [
    125,
@@ -1957,8 +1971,8 @@
  },
  "industry/cola.png": {
   "size": [
-   278,
-   168
+   281,
+   182
   ],
   "anchor": [
    125,
@@ -1971,8 +1985,8 @@
  },
  "industry/chips.png": {
   "size": [
-   278,
-   168
+   281,
+   182
   ],
   "anchor": [
    125,
@@ -1986,11 +2000,11 @@
  "industry/chimney.png": {
   "size": [
    118,
-   205
+   207
   ],
   "anchor": [
    14,
-   198
+   200
   ],
   "frames": 16,
   "footprint": [
@@ -2000,82 +2014,82 @@
  },
  "industry/truck-red.png": {
   "size": [
-   81,
-   60
+   83,
+   62
   ],
   "anchor": [
-   40,
-   41
+   41,
+   42
   ]
  },
  "industry/truck-blue.png": {
   "size": [
-   81,
-   60
+   83,
+   62
   ],
   "anchor": [
-   40,
-   41
+   41,
+   42
   ]
  },
  "industry/truck-red-r1.png": {
   "size": [
-   81,
-   60
+   83,
+   62
   ],
   "anchor": [
-   41,
-   41
+   42,
+   42
   ]
  },
  "industry/truck-blue-r1.png": {
   "size": [
-   81,
-   60
+   83,
+   62
   ],
   "anchor": [
-   41,
-   41
+   42,
+   42
   ]
  },
  "industry/truck-red-r2.png": {
   "size": [
-   81,
-   54
+   83,
+   58
   ],
   "anchor": [
-   41,
-   36
+   42,
+   39
   ]
  },
  "industry/truck-blue-r2.png": {
   "size": [
-   81,
-   54
+   83,
+   58
   ],
   "anchor": [
-   41,
-   36
+   42,
+   39
   ]
  },
  "industry/truck-red-r3.png": {
   "size": [
-   81,
-   54
+   83,
+   58
   ],
   "anchor": [
-   40,
-   36
+   41,
+   39
   ]
  },
  "industry/truck-blue-r3.png": {
   "size": [
-   81,
-   54
+   83,
+   58
   ],
   "anchor": [
-   40,
-   36
+   41,
+   39
   ]
  },
  "industry/workshop.png": {
@@ -2197,6 +2211,54 @@
   "anchor": [
    40,
    74
+  ]
+ },
+ "nuclear/lab.png": {
+  "size": [
+   232,
+   167
+  ],
+  "anchor": [
+   116,
+   111
+  ],
+  "footprint": [
+   2.2,
+   1.3
+  ]
+ },
+ "nuclear/office.png": {
+  "size": [
+   180,
+   218
+  ],
+  "anchor": [
+   90,
+   173
+  ],
+  "footprint": [
+   1.7,
+   1.1
+  ]
+ },
+ "nuclear/guardhouse.png": {
+  "size": [
+   64,
+   54
+  ],
+  "anchor": [
+   32,
+   43
+  ]
+ },
+ "nuclear/checkpoint.png": {
+  "size": [
+   236,
+   162
+  ],
+  "anchor": [
+   118,
+   105
   ]
  },
  "buildings/pizza.png": {

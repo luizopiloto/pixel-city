@@ -444,6 +444,11 @@
     const groundMap = new Map();
     const lots = [], props = [];
     const setGround = (u, v, name, mode = 0) => groundMap.set(key(u, v), [name, mode]);
+    const concrete = (u, v, lu = BLOCK, lv = BLOCK) => {
+      for (let du = 0; du < lu; du++) for (let dv = 0; dv < lv; dv++) {
+        setGround(u + du, v + dv, rng() < 0.25 ? 'art/ground/concrete-b' : 'art/ground/concrete');
+      }
+    };
     const pave = (u, v, lu = BLOCK, lv = BLOCK) => {
       for (let du = 0; du < lu; du++) for (let dv = 0; dv < lv; dv++) setGround(u + du, v + dv, 'paving');
     };
@@ -709,32 +714,63 @@
     // Nuclear plant (15 × 15 tiles): two cooling towers and the reactor along
     // the back, the turbine hall and substations in the middle, a staff car
     // park at the front, a fence all round with the gate and the atom sign.
+    let nuclear = null;
     function nuclearBlock({ u0, u1, v0, v1 }) {
-      pave(u0, v0, u1 - u0, v1 - v0);
+      concrete(u0, v0, u1 - u0, v1 - v0);
+      // Back: two cooling towers and the reactor; middle: substations and the
+      // turbine hall; front left: the staff car park behind a security
+      // checkpoint; front right: the admin office and the R&D lab on a lawn.
       for (const cu of [u0 + 2.6, u0 + 6.0]) {
         late.push(['art/nuclear/cooling-tower.png', cu, v0 + 2.7, [cu - 1.15, cu + 1.15, v0 + 1.55, v0 + 3.85]]);
       }
       artLot('nuclear/reactor.png', u0 + 11.0, v0 + 2.8);
-      artLot('nuclear/turbine-hall.png', u0 + 10.2, v0 + 7.2);
-      artLot('industry/power-station.png', u0 + 3.0, v0 + 7.3);
-      artLot('industry/power-station.png', u0 + 5.6, v0 + 7.3);
-      artProp('industry/water-tower.png', u0 + 13.6, v0 + 6.5);
-      for (let u = u0; u < u1; u++) for (let v = v0 + 10; v < v1; v++) setGround(u, v, v === v0 + 12 ? 'art/ground/lot' : 'art/ground/lot-lines-v');
-      for (let k = 0; k < 26; k++) {                  // staff cars, rows either side of the aisle
-        for (const [v, dir] of [[v0 + 11.5, 1], [v0 + 13.5, -1]]) {
-          if (rng() < 0.5) parkedCars.push({ u: u0 + 0.35 + k * 0.55, v, head: [0, rng() < 0.3 ? -dir : dir], type: pick(TYPES) });
+      artProp('industry/water-tower.png', u0 + 13.9, v0 + 5.6);
+      artLot('industry/power-station.png', u0 + 2.6, v0 + 7.0);
+      artLot('industry/power-station.png', u0 + 5.2, v0 + 7.0);
+      artLot('nuclear/turbine-hall.png', u0 + 10.4, v0 + 7.0);
+      artLot('port/warehouse-b.png', u0 + 8.6, v0 + 2.5);                     // fuel storage
+      artLot('industry/workshop.png', u0 + 7.4, v0 + 7.2);                    // maintenance
+      artProp('industry/dish.png', u0 + 8.4, v0 + 5.0);
+      artProp('industry/barrels.png', u0 + 6.3, v0 + 8.6);
+      artProp('industry/cell-tower.png', u0 + 13.2, v0 + 1.2);
+      artProp('port/stack-a.png', u0 + 13.6, v0 + 8.6);
+      artProp('port/stack-b.png', u0 + 14.2, v0 + 7.4);
+      artProp('industry/truck-blue.png', u0 + 12.6, v0 + 9.1);
+      artProp('industry/truck-red-r1.png', u0 + 8.6, v0 + 4.4);
+      // Car park: lined asphalt, two rows either side of an aisle.
+      const pu1 = u0 + 9;
+      for (let u = u0; u < pu1; u++) for (let v = v0 + 10; v < v1; v++) {
+        setGround(u, v, v === v0 + 12 ? 'art/ground/lot' : 'art/ground/lot-lines-v');
+      }
+      const gcol = u0 + 3;                           // the checkpoint's three lanes: gcol .. gcol+2
+      for (let k = 0; k < 16; k++) {
+        const u = u0 + 0.35 + k * 0.55;
+        for (const [v, dir] of [[v0 + 10.5, 1], [v0 + 13.5, -1]]) {
+          if (v > v0 + 13 && u > gcol - 0.3 && u < gcol + 3.3) continue;          // the lanes in
+          if (rng() < 0.55) parkedCars.push({ u, v, head: [0, rng() < 0.3 ? -dir : dir], type: pick(TYPES) });
         }
       }
-      const gate = Math.floor((u0 + u1) / 2);        // fence, open at the gate on the +v street
+      // Security checkpoint: canopy over the lanes, the guardhouse on the
+      // middle island, a barrier on each outer lane (they lift now and then).
+      late.push(['art/nuclear/checkpoint.png', gcol + 1.5, v1 - 0.9, [gcol, gcol + 3, v1 - 1.25, v1 - 0.55]]);
+      artProp('nuclear/guardhouse.png', gcol + 1.5, v1 - 0.95);
+      props.push(['art/parking/gate-l.png', gcol + 0.05, v1 - 0.55], ['art/parking/gate-r.png', gcol + 2.95, v1 - 0.55]);
+      // Office and lab facing the lawn; the atom sign by the street.
+      for (let u = pu1; u < u1; u++) for (let v = v0 + 10; v < v1; v++) setGround(u, v, v < v0 + 13 ? 'paving' : pick(GRASSES));
+      artLot('nuclear/office.png', u0 + 10.4, v0 + 11.8);
+      artLot('nuclear/lab.png', u0 + 13.2, v0 + 11.8);
+      for (const tu of [u0 + 9.6, u0 + 12.0, u0 + 14.4]) artProp(pick(CITY_TREES), tu, v0 + 14.3);
+      artProp('nuclear/sign.png', u0 + 11.2, v1 - 0.4);
+      // Fence all round, open at the checkpoint.
       for (let u = u0; u < u1; u++) {
         props.push(['art/parking/fence.png', u, v0 + 0.02, [u, u + 1, v0 + 0.02, v0 + 0.05]]);
-        if (u !== gate) props.push(['art/parking/fence.png', u, v1 - 0.06, [u, u + 1, v1 - 0.06, v1 - 0.03]]);
+        if (u < gcol || u > gcol + 2) props.push(['art/parking/fence.png', u, v1 - 0.06, [u, u + 1, v1 - 0.06, v1 - 0.03]]);
       }
       for (let v = v0; v < v1; v++) {
         props.push(['art/parking/fence-r1.png', u0 + 0.05, v, [u0 + 0.02, u0 + 0.05, v, v + 1]]);
         props.push(['art/parking/fence-r1.png', u1 - 0.01, v, [u1 - 0.04, u1 - 0.01, v, v + 1]]);
       }
-      artProp('nuclear/sign.png', gate - 0.7, v1 - 0.35);
+      nuclear = { area: [u0, u1, v0, v1] };
     }
 
     // ----- industry and port -----
@@ -758,7 +794,7 @@
     // along the +v street on deep blocks; container stacks in the corners.
     function factoryBlock(sb) {
       const { u0, u1, v0, v1 } = sb, lu = u1 - u0, lv = v1 - v0;
-      pave(u0, v0, lu, lv);
+      concrete(u0, v0, lu, lv);
       const park = lv >= 7 ? 2.4 : 0;               // truck park depth
       let v = v0 + 0.3;
       while (v1 - park - v >= 1.6) {
@@ -792,7 +828,7 @@
     // One industrial cell: the Cat's gas stop, or a workshop, a substation,
     // or a cluster of utility masts.
     function industryCell(c, u, v) {
-      pave(u, v);
+      concrete(u, v);
       if (c.gasStop) {                                // Cat's: canopy, kiosk and the pylon
         for (let uu = u + 1; uu < u + 3; uu++) for (let vv = v; vv < v + 3; vv++) setGround(uu, vv, 'art/ground/lot');
         artLot('cats/kiosk.png', u + 0.75, v + 0.6, c.district);
@@ -819,11 +855,11 @@
     function portCell(c, u, v) {
       const coastal = NB4.some(([a, b]) => !cellAt(c.i + a, c.j + b));
       if (coastal) {
-        for (let uu = u; uu < u + 3; uu++) for (let vv = v; vv < v + 3; vv++) setGround(uu, vv, 'art/ground/lot');
+        concrete(u, v);
         for (const [du, dv] of [[0.7, 0.6], [2.2, 0.6], [0.7, 1.9], [2.2, 1.9]]) if (rng() < 0.85) stack(u + du, v + dv);
         return;
       }
-      pave(u, v);
+      concrete(u, v);
       const name = pick(['port/warehouse-a.png', 'port/warehouse-b.png']), [a, b] = fp(name);
       artLot(name, u + 1.5, v + 3 - 0.35 - b / 2, c.district);
       stack(u + 0.6, v + 0.45, 0);
@@ -1252,7 +1288,7 @@
       for (const k of portNear) {
         const [u, v] = k.split(',').map(Number);
         if (!inCity(u, v) || isRoad(u, v)) continue;
-        if (!groundMap.has(k) || /grass/.test(groundMap.get(k)[0])) setGround(u, v, 'paving');
+        if (!groundMap.has(k) || /grass/.test(groundMap.get(k)[0])) setGround(u, v, 'art/ground/concrete');
         const out = [[0, -1], [1, 0], [0, 1], [-1, 0]].findIndex(([a, b]) => sea.has(key(u + a, v + b)));
         if (out >= 0) quay.push([u, v, out]);
       }
@@ -1427,7 +1463,7 @@
       const stops = [];
       const SIDES = [[[0, 1], 0], [[-1, 0], 1], [[0, -1], 2], [[1, 0], 3]];      // side of the block, sprite turn
       for (const c of cells.values()) {
-        if (c.sup >= 0 && ['cats', 'parking'].includes(supers[c.sup].kind)) continue;   // their own furniture
+        if (c.sup >= 0 && ['cats', 'parking', 'nuclear'].includes(supers[c.sup].kind)) continue;   // their own furniture
         const u0 = roadAt(c.i) + 1, v0 = roadAt(c.j) + 1;
         const busy = c.type === 'downtown' || c.type === 'plaza';
         for (const [[du, dv], k] of SIDES) {
@@ -1523,7 +1559,7 @@
     }
 
     return {
-      ground, isRoad, isLand, isWater, lighthouse, parking, gas, parkedCars, junction, lots, props, signals, signalAt, rng, pick,
+      ground, isRoad, isLand, isWater, lighthouse, parking, gas, nuclear, parkedCars, junction, lots, props, signals, signalAt, rng, pick,
       NU: nu, NV: nv, IU, IV, cells: cells.size,
       districts: districts.map(d => d.type), blockedDoors, blocked,
       cellList: [...cells.values()].map(c => [c.i, c.j, c.type, c.sup >= 0]),
@@ -2182,6 +2218,8 @@
           item.post = [u - 0.05, u + 0.05, v - 0.05, v + 0.05];
           item.box = item.shut;
           Object.assign(item, { pos: [u, v], open: 0 });
+          const n = city.nuclear && city.nuclear.area;                  // checkpoint barriers lift now and then
+          if (n && u >= n[0] && u <= n[1] && v >= n[2] && v <= n[3]) item.cycle = (u * 7.3) % 11;
           item.frameOf = () => Math.round(item.open * (item.frames - 1));
           gates.push(item);
         }
@@ -2571,7 +2609,8 @@
     function step(dt) {
       clock += dt;
       for (const g of gates) {
-        const near = Math.hypot(hero.pos[0] - g.pos[0], hero.pos[1] - g.pos[1]) < 1.6;
+        const near = Math.hypot(hero.pos[0] - g.pos[0], hero.pos[1] - g.pos[1]) < 1.6 ||
+          (g.cycle !== undefined && (clock + g.cycle) % 11 < 3.5);                // a car let through
         g.open = Math.min(1, Math.max(0, g.open + (near ? dt : -dt) / GATE_S));
         g.box = g.open > 0.5 ? g.post : g.shut;
       }
