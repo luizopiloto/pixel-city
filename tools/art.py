@@ -2863,6 +2863,37 @@ def air_dancer(seed, p, color="#c8402a", arms="#f2c06a"):
     return s
 
 
+
+def quad(s, p0, p1, p2, p3, shader, light="auto"):
+    """A flat four-sided face through p0..p3 (in order), as two triangles."""
+    s.face(p0, np.subtract(p1, p0), np.subtract(p2, p0), shader, tri=True, light=light)
+    s.face(p0, np.subtract(p2, p0), np.subtract(p3, p0), shader, tri=True, light=light)
+
+
+def rounded(s, x0, y0, z0, sx, sy, sz, side, front, back, top, bev=0.035, bz=3):
+    """A box with rounded-off top edges: four vertical sides up to sz - bz
+    (side on ±v, front at +u, back at -u; each one whole face, so shaders
+    see its full width), sloped strips up to an inset top. Every face shades
+    by its facing, so it works turned."""
+    h, x1, y1 = sz - bz, x0 + sx, y0 + sy
+    s.face((x0, y1, z0), (sx, 0, 0), (0, 0, h), side, light="auto")
+    s.face((x0, y0, z0), (sx, 0, 0), (0, 0, h), side, light="auto")
+    s.face((x1, y0, z0), (0, sy, 0), (0, 0, h), front, light="auto")
+    s.face((x0, y0, z0), (0, sy, 0), (0, 0, h), back, light="auto")
+    hz, t = z0 + h, z0 + sz
+    a0, a1, b0, b1 = x0 + bev, x1 - bev, y0 + bev, y1 - bev
+    quad(s, (x0, y1, hz), (x1, y1, hz), (a1, b1, t), (a0, b1, t), top)
+    quad(s, (x0, y0, hz), (x1, y0, hz), (a1, b0, t), (a0, b0, t), top)
+    quad(s, (x1, y0, hz), (x1, y1, hz), (a1, b1, t), (a1, b0, t), top)
+    quad(s, (x0, y0, hz), (x0, y1, hz), (a0, b1, t), (a0, b0, t), top)
+    quad(s, (a0, b0, t), (a1, b0, t), (a1, b1, t), (a0, b1, t), top, light=1.0)
+
+
+def wheel(s, x, y, r=3.0):
+    s.blob((x, y, r), r, ramp("#1a1a1e", "#26262a", "#36363c", "#48484e"), squash=1.0)
+    s.blob((x, y, r), r * 0.4, ramp("#76727c", "#9c98a2", "#c8c4cc"))
+
+
 # ---------- port ----------
 
 CONTAINER_COLS = ["#9a4a3a", "#3e5a7a", "#4a6a4a", "#b0703a", "#8a8690", "#3f6a6e", "#b89a40", "#6a4a5a", "#c8c0b0"]
@@ -3264,35 +3295,40 @@ def chimney_smoke(seed, p, h=120):
 
 
 def truck(seed, color="#c8402a", rot=0):
-    """Semi-truck along u (turned by rot): a cab at +u with windscreen, grille
-    and lights, a box trailer with a company stripe, wheels and mudflaps."""
-    s = Sprite(150, 96, 75, 64, seed)
+    """Semi-truck along u (turned by rot): a cab-over tractor at +u with a
+    sloped windscreen, grille, bumper, lights and mirrors; a box trailer with
+    rounded roof edges and a company stripe; round wheels."""
+    s = Sprite(150, 100, 75, 66, seed)
     s.rot = rot
     c = rgb(color)
-    trailer = lambda a_, b_, xs, ys: np.where(((b_ > 0.55) & (b_ < 0.7))[:, None], c,
-                                              np.where((np.mod(xs, 4) == 0)[:, None], rgb("#d0ccc4"), rgb("#e8e4dc")))
-    s.box(-0.52, -0.12, 4, 0.8, 0.24, 18, flat(s, "#d8d4cc"), trailer, trailer)
-    s.box(-0.52, -0.12, 2, 0.8, 0.24, 2, *(flat(s, "#3e3d3f") for _ in range(3)))        # chassis
-
-    def cab(a_, b_, xs, ys):
-        glass = (b_ > 0.55) & (b_ < 0.9) & (a_ > 0.12) & (a_ < 0.88)
-        out = np.where(glass[:, None], np.array(GLASS)[(xs + ys) % 4] * 1.1, c)
-        return np.where((b_ < 0.15)[:, None], rgb("#2e3336"), out)
-
-    def nose(a_, b_, xs, ys):
-        grille = (b_ < 0.45) & (a_ > 0.2) & (a_ < 0.8) & (np.mod(ys, 2) == 0)
-        out = np.where(grille[:, None], rgb("#bdb3a2"), cab(a_, b_, xs, ys))
-        lights = (b_ > 0.2) & (b_ < 0.35) & ((a_ < 0.15) | (a_ > 0.85))
-        return np.where(lights[:, None], rgb("#f2e0a0"), out)
-    s.box(0.3, -0.12, 2, 0.24, 0.24, 16, flat(s, c * 1.1), cab, nose)
-    if rot:
-        s.face((0.3, -0.12, 2), (0.24, 0, 0), (0, 0, 16), cab, light="auto")
-        s.face((0.54, -0.12, 2), (0, 0.24, 0), (0, 0, 16), nose, light="auto")
-        s.face((-0.52, -0.12, 4), (0.8, 0, 0), (0, 0, 18), trailer, light="auto")
-        s.face((-0.52, -0.12, 4), (0, 0.24, 0), (0, 0, 18), flat(s, "#c8c4bc"), light="auto")
-    for x in (-0.45, -0.33, 0.12, 0.42):
-        for y in (-0.14, 0.12):
-            s.box(x, y, 0, 0.08, 0.02, 5, *(flat(s, "#1e1e22") for _ in range(3)))
+    trailer_side = lambda a_, b_, xs, ys: np.where(((b_ > 0.55) & (b_ < 0.68))[:, None], c,
+                                                   np.where((np.mod(xs, 5) == 0)[:, None], rgb("#d4d0c8"), rgb("#ecebe6")))
+    s.box(-0.52, -0.1, 3, 0.8, 0.2, 2, *(flat(s, "#2e2e32") for _ in range(3)))            # chassis
+    rounded(s, -0.54, -0.12, 5, 0.8, 0.24, 18, trailer_side, flat(s, "#dcdad4"), flat(s, "#c8c6c0"),
+            flat(s, "#f2f0ea", 2), bev=0.03, bz=2)
+    # Tractor: lower body, then the cab with a sloped windscreen.
+    cx0, cx1, y0, y1 = 0.3, 0.55, -0.12, 0.12
+    body = lambda a_, b_, xs, ys: np.where((b_ < 0.2)[:, None], rgb("#2e2e32"), c)
+    grille = lambda a_, b_, xs, ys: np.where(((b_ > 0.3) & (b_ < 0.8) & (a_ > 0.2) & (a_ < 0.8) & (np.mod(ys, 2) == 0))[:, None],
+                                             rgb("#bdb8ae"), np.where(((b_ > 0.3) & (b_ < 0.6) & ((a_ < 0.14) | (a_ > 0.86)))[:, None],
+                                                                     rgb("#f2e0a0"), c))
+    rounded(s, cx0, y0, 3, cx1 - cx0, y1 - y0, 9, body, grille, flat(s, c * 0.8), flat(s, c * 1.05), bev=0.02, bz=1)
+    zb, zt, back = 12, 22, cx0 + 0.02
+    glass = flat(s, rgb("#26262a"), 2)
+    cc = flat(s, c, 2)
+    xw = cx1 - 0.1                                              # the side window starts here
+    for yy in (y0, y1):                                         # sides: the front edge slopes back
+        quad(s, (back, yy, zb), (xw, yy, zb), (xw, yy, zt), (back, yy, zt), cc)
+        quad(s, (xw, yy, zb), (cx1, yy, zb), (cx1 - 0.06, yy, zt), (xw, yy, zt), glass)
+    quad(s, (cx1, y0, zb), (cx1, y1, zb), (cx1 - 0.06, y1, zt), (cx1 - 0.06, y0, zt), glass)     # windscreen
+    quad(s, (back, y0, zb), (back, y1, zb), (back, y1, zt), (back, y0, zt), flat(s, c * 0.8))
+    quad(s, (back, y0, zt), (cx1 - 0.06, y0, zt), (cx1 - 0.06, y1, zt), (back, y1, zt), flat(s, c * 1.1), light=1.0)
+    for yy in (y0 - 0.02, y1 + 0.02):                           # mirrors
+        s.box(cx1 - 0.03, yy - 0.005, 15, 0.01, 0.01, 5, *(flat(s, "#2e2e32") for _ in range(3)))
+    s.box(cx1, y0 + 0.01, 2, 0.015, y1 - y0 - 0.02, 3, *(flat(s, "#5b5a5c") for _ in range(3)))   # bumper
+    for x in (-0.45, -0.33, 0.12, 0.44):
+        for y in (-0.12, 0.12):
+            wheel(s, x, y)
     s.outline(0.8)
     return s
 
@@ -3337,19 +3373,48 @@ def water_tower(seed):
 
 
 def cell_tower(seed):
-    """Cell tower: a slim lattice mast with antenna panels and dishes."""
-    s = Sprite(120, 260, 60, 235, seed)
-    steel = [flat(s, c, 2) for c in ("#c8c2b6", "#a69c8c", "#8e8680")]
-    for x, y in ((-0.08, -0.08), (0.06, -0.08), (0.06, 0.06), (-0.08, 0.06)):
-        s.box(x, y, 0, 0.02, 0.02, 180, *steel)
-    for z in range(10, 180, 14):
-        p, q = s.proj(-0.07, 0.07, z), s.proj(0.07, 0.07, z + 14)
-        s.line(p, q, rgb("#a69c8c"), 0.2)
-    for k, (dx, dy) in enumerate(((0.12, 0), (0, 0.12), (-0.12, 0), (0, -0.12))):   # antenna panels
-        s.box(dx - 0.02, dy - 0.02, 160, 0.04, 0.04, 16, *(flat(s, "#e8e4dc") for _ in range(3)))
-    s.blob((0.1, 0.1, 140), 4, ramp("#9a9488", "#c8c2b6", "#e8e2d6"), squash=0.6)
-    s.blob((0, 0, 184), 1.5, ramp("#8a2a20", "#c8402a", "#f07050"))
-    s.outline(0.8)
+    """Cell tower: a three-legged lattice mast tapering up, braced on every
+    face, a triangular head frame with three sectors of panel antennas, two
+    microwave drums, a cable ladder, a red beacon; at its foot an equipment
+    shelter inside a small fence."""
+    s = Sprite(170, 290, 85, 255, seed)
+    H = 180
+    legs = [(math.cos(t), math.sin(t)) for t in (math.pi / 2, math.pi * 7 / 6, math.pi * 11 / 6)]
+    r = lambda z: 0.24 * (1 - z / H) + 0.07
+    col = rgb("#9c98a2")
+    s.box(-0.3, -0.3, 0, 0.6, 0.6, 3, *(flat(s, c) for c in ("#c8c2b6", "#b3ab9e", "#9c9486")))
+    for cx, cy in legs:                                            # legs, 2 px
+        p0, p1 = s.proj(cx * r(0), cy * r(0), 3), s.proj(cx * r(H), cy * r(H), H)
+        for dx in (0, 1):
+            s.line((p0[0] + dx, p0[1]), (p1[0] + dx, p1[1]), col * (1.0 if dx else 0.78), (cx + cy) * 0.1)
+    for z0 in range(3, H - 12, 12):                                # braced faces
+        z1 = z0 + 12
+        for k in range(3):
+            (ax, ay), (bx, by) = legs[k], legs[(k + 1) % 3]
+            d = (ax + bx + ay + by) * 0.05
+            s.line(s.proj(ax * r(z0), ay * r(z0), z0), s.proj(bx * r(z1), by * r(z1), z1), col * 0.85, d)
+            s.line(s.proj(bx * r(z0), by * r(z0), z0), s.proj(ax * r(z1), ay * r(z1), z1), col * 0.85, d)
+            s.line(s.proj(ax * r(z1), ay * r(z1), z1), s.proj(bx * r(z1), by * r(z1), z1), col * 0.8, d)
+    ladder = s.proj(0.05, 0.05, 3), s.proj(0.03, 0.03, H)
+    s.line(*ladder, rgb("#5b5a5c"), 0.2)
+    hz = H - 16                                                    # head frame and sector panels
+    for k in range(3):
+        (ax, ay), (bx, by) = legs[k], legs[(k + 1) % 3]
+        s.line(s.proj(ax * 0.22, ay * 0.22, hz), s.proj(bx * 0.22, by * 0.22, hz), rgb("#8e8a94"), 0.3)
+        mx, my = (ax + bx) / 2, (ay + by) / 2
+        for j in (-1, 0, 1):
+            px, py = mx * 0.2 + (bx - ax) * 0.07 * j, my * 0.2 + (by - ay) * 0.07 * j
+            s.box(px - 0.015, py - 0.015, hz - 8, 0.03, 0.03, 22, *(flat(s, c) for c in ("#f0eee8", "#dcdad4", "#c4c2bc")))
+    for z, (dx, dy) in ((hz - 34, (0.14, 0.05)), (hz - 58, (0.05, 0.14))):       # microwave drums
+        s.blob((dx, dy, z), 4.2, ramp("#9a9488", "#c8c2b6", "#ecebe6"), squash=1.0, shade=0.15)
+        s.blob((dx + 0.02, dy + 0.02, z), 2.2, ramp("#b8b2a6", "#e0dcd4", "#f4f2ee"))
+    s.box(-0.006, -0.006, H, 0.012, 0.012, 12, *(flat(s, "#5b5a5c") for _ in range(3)))
+    s.blob((0, 0, H + 13), 1.8, ramp("#8a2a20", "#c8402a", "#f07050"))
+    # Equipment shelter and fence at the foot.
+    s.box(0.08, -0.26, 3, 0.2, 0.16, 12, flat(s, "#c8c2b6"),
+          lambda a_, b_, xs, ys: np.where(((a_ > 0.4) & (a_ < 0.7) & (b_ < 0.8))[:, None], rgb("#5b5a5c"), rgb("#d8d4cc")),
+          flat(s, "#c8c4bc"))
+    s.outline(0.85)
     return s
 
 
@@ -3366,8 +3431,11 @@ def dish_antenna(seed, el=42, az=150, R=34, f=19):
     hut = lambda a_, b_, xs, ys: np.where(((a_ > 0.35) & (a_ < 0.65) & (b_ < 0.75))[:, None], rgb("#5b5a5c"), rgb("#d8d4cc"))
     s.box(0.1, -0.3, 5, 0.2, 0.24, 15, flat(s, "#bdb3a2"), hut, flat(s, "#c8c4bc"))
     steel = [flat(s, c, 2) for c in ("#a8a4ae", "#8e8a94", "#76727c")]
-    s.box(-0.08, -0.08, 5, 0.16, 0.16, 26, *steel)                     # turret
-    s.box(-0.12, -0.12, 31, 0.24, 0.24, 5, *steel)                     # turntable
+    ring(s, 0.14, 5, 22, lambda k: banded(s, [rgb("#a8a4ae"), rgb("#9c98a2")], 4, axis=1), n=16)   # round pedestal
+    stripe = lambda a_, b_, xs, ys: np.where((np.mod(a_ * 8, 1) < 0.5)[:, None], rgb("#e0b030"), rgb("#2e2e32"))
+    ring(s, 0.145, 5, 4, lambda k: stripe, n=16)                         # hazard band at its foot
+    s.box(-0.13, -0.13, 27, 0.26, 0.26, 5, *steel)                     # turntable
+    s.box(-0.16, 0.08, 27, 0.32, 0.12, 8, *steel)                      # drive housing
     e, a = math.radians(el), math.radians(az)
     axis = np.array([math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e)])
     e1 = np.array([-math.sin(a), math.cos(a), 0.0])
@@ -3397,6 +3465,10 @@ def dish_antenna(seed, el=42, az=150, R=34, f=19):
                 col = (inner if front else back) * lit
                 if front and (i == nr - 1):
                     col = col * 0.93                                    # a faint band near the rim
+                if front and k % 8 == 0:
+                    col = col * 0.9                                     # panel seams
+                if not front and k % 4 == 0:
+                    col = col * 0.8                                     # back ribs
                 o = W(tri[0])
                 s.face(o, np.subtract(W(tri[1]), o), np.subtract(W(tri[2]), o), flat(s, np.minimum(col, 255), 2),
                        tri=True, light=1.0)
@@ -3409,7 +3481,8 @@ def dish_antenna(seed, el=42, az=150, R=34, f=19):
         rp = W(pt(R * 0.96, math.pi / 4 + k * math.pi / 2))
         s.line(s.proj(*rp), s.proj(*W(F)), rgb("#8e8a94"), (rp[0] + rp[1] + W(F)[0] + W(F)[1]) / 2 + 0.02)
     fw = W(F)
-    s.blob(fw, 3.2, ramp("#5b5a5c", "#8e8a94", "#c8c4cc"), shade=0.2)
+    s.blob(fw, 3.6, ramp("#5b5a5c", "#8e8a94", "#c8c4cc"), shade=0.2)
+    s.blob(W(F - axis * 2), 2.4, ramp("#d8d4cc", "#ecebe6", "#f8f8f4"))       # subreflector
     # Yoke: two arms up from the turntable to the hub on the bowl's back.
     hub = W(V - axis * 3)
     for side in (-1, 1):
@@ -3435,35 +3508,81 @@ def barrels(seed):
     return s
 
 
+def insulator(s, x, y, z, n=5, r=2.2):
+    """A porcelain insulator column: n stacked sheds, a metal cap."""
+    for k in range(n):
+        s.blob((x, y, z + 2 + k * 3), r, ramp("#6a3a2a", "#8a4a32", "#a8603e", "#c8805a"), squash=0.5, shade=0.1)
+    s.blob((x, y, z + 3 + n * 3), 1.5, ramp("#5b5a5c", "#8e8a94", "#c8c4cc"))
+
+
+def lattice_column(s, x, y, z0, h, w=0.06, color="#8e8a94"):
+    """A square lattice steel column: four angle legs, X bracing on its
+    two visible faces."""
+    c = rgb(color)
+    for dx, dy in ((0, 0), (w, 0), (w, w), (0, w)):
+        s.box(x + dx - 0.006, y + dy - 0.006, z0, 0.012, 0.012, h, *(flat(s, c * k, 1) for k in (1.05, 0.9, 0.75)))
+    for z in range(int(z0), int(z0 + h - 8), 8):
+        for (ax, ay), (bx, by) in (((0, w), (w, w)), ((w, 0), (w, w))):
+            s.line(s.proj(x + ax, y + ay, z), s.proj(x + bx, y + by, z + 8), c * 0.85, x + y + w)
+            s.line(s.proj(x + bx, y + by, z), s.proj(x + ax, y + ay, z + 8), c * 0.85, x + y + w)
+
+
 def power_station(seed):
-    """Electrical substation: transformers with fins and insulators, a steel
-    gantry with lines, all inside a chain-link fence (about 2 × 1.6 tiles)."""
-    s = Sprite(320, 220, 160, 150, seed)
+    """Electrical substation: a gravel yard inside a chain-link fence on
+    concrete posts (a gate with a warning sign), two transformers with fin
+    banks, a conservator tank and porcelain bushings, a row of circuit
+    breakers on steel stands, lattice gantries carrying the busbars, and a
+    small control kiosk."""
+    s = Sprite(340, 250, 170, 170, seed)
     a, b = 2.0, 1.6
     x0, y0 = -a / 2, -b / 2
-    s.face((x0, y0, 0.3), (a, 0, 0), (0, b, 0), lambda a_, b_, xs, ys: np.repeat(rgb("#8e8680")[None], len(a_), 0)
-           + (s.grain[ys, xs] - 0.5)[:, None] * 12)                 # gravel
-    for k in range(3):                                              # transformers
-        tx = x0 + 0.3 + k * 0.55
-        s.box(tx, y0 + 0.5, 0, 0.36, 0.3, 20, *(flat(s, c) for c in ("#7a8a7a", "#6a7a6a", "#5a6a5a")))
-        for f in range(4):
-            s.box(tx + 0.36, y0 + 0.52 + f * 0.07, 2, 0.05, 0.02, 16, *(flat(s, "#5a6a5a") for _ in range(3)))
-        for ix in (0.08, 0.18, 0.28):
-            s.box(tx + ix, y0 + 0.62, 20, 0.02, 0.02, 10, *(flat(s, "#c8b8a0") for _ in range(3)))
-            s.blob((tx + ix + 0.01, y0 + 0.63, 31), 1.5, ramp("#8a6a4a", "#c8b8a0", "#e8e2d6"))
-    steel = [flat(s, c, 2) for c in STEEL]
-    for x in (x0 + 0.15, x0 + a - 0.2):                             # gantry
-        s.box(x, y0 + 0.2, 0, 0.04, 0.04, 56, *steel)
-        s.box(x, y0 + 1.2, 0, 0.04, 0.04, 56, *steel)
-    s.box(x0 + 0.15, y0 + 0.2, 56, a - 0.31, 0.04, 3, *steel)
-    s.box(x0 + 0.15, y0 + 1.2, 56, a - 0.31, 0.04, 3, *steel)
-    for k in range(3):
-        p, q = s.proj(x0 + 0.48 + k * 0.55, y0 + 0.22, 56), s.proj(x0 + 0.48 + k * 0.55, y0 + 0.63, 31)
-        s.line(p, q, rgb("#2e3336"), 0.1)
-    fence = lambda a_, b_, xs, ys: np.where(((xs + ys) % 3 == 0) | ((xs - ys) % 3 == 0) | (b_ > 0.9), 1, 0)[:, None] * \
-        np.concatenate([np.repeat(rgb("#a69c8c")[None], len(a_), 0), np.full((len(a_), 1), 255.0)], 1)
-    for o, e in (((x0, y0 + b, 0), (a, 0, 0)), ((x0 + a, y0, 0), (0, b, 0)), ((x0, y0, 0), (a, 0, 0)), ((x0, y0, 0), (0, b, 0))):
-        s.face(o, e, (0, 0, 16), fence, light=1.0)
+    gravel = lambda a_, b_, xs, ys: np.repeat(rgb("#9c968c")[None], len(a_), 0) * (0.86 + 0.28 * s.grain[ys, xs])[:, None]
+    s.box(x0, y0, 0, a, b, 2, gravel, flat(s, "#b3ab9e"), flat(s, "#a69c8c"))
+    steel = "#8e8a94"
+    # Gantries: a lattice frame at each end, two lattice beams between them.
+    for gx in (x0 + 0.12, x0 + a - 0.2):
+        for gy in (y0 + 0.2, y0 + 1.3):
+            lattice_column(s, gx, gy, 2, 56)
+        s.box(gx, y0 + 0.2, 56, 0.07, 1.16, 4, *(flat(s, rgb(steel) * k, 2) for k in (1.05, 0.9, 0.75)))
+    for gy in (y0 + 0.22, y0 + 1.32):
+        s.box(x0 + 0.12, gy, 58, a - 0.25, 0.04, 3, *(flat(s, rgb(steel) * k, 2) for k in (1.05, 0.9, 0.75)))
+    # Transformers along the back.
+    for tx in (x0 + 0.4, x0 + 1.15):
+        ty = y0 + 0.35
+        s.box(tx, ty, 2, 0.42, 0.32, 18, *(flat(s, c, 3) for c in ("#7a8a7a", "#6a7a6a", "#5a6a5a")))
+        for f in range(6):                                      # fin banks on both long sides
+            for fy in (ty - 0.05, ty + 0.32):
+                s.box(tx + 0.03 + f * 0.065, fy, 3, 0.03, 0.05, 15, *(flat(s, c, 2) for c in ("#6a7a6a", "#5a6a5a", "#4a5a4a")))
+        cons = lambda a_, b_, xs, ys: np.repeat(rgb("#7a8a7a")[None], len(a_), 0) * (0.8 + 0.3 * b_)[:, None]
+        s.box(tx + 0.05, ty + 0.02, 24, 0.32, 0.07, 6, cons, cons, cons)          # conservator
+        s.box(tx + 0.08, ty + 0.05, 20, 0.02, 0.02, 4, *(flat(s, "#5a6a5a") for _ in range(3)))
+        for ix in (0.1, 0.21, 0.32):
+            insulator(s, tx + ix, ty + 0.2, 20, n=4)
+            top = s.proj(tx + ix, ty + 0.2, 36)
+            s.line(top, s.proj(tx + ix, y0 + 0.24, 58), rgb("#3e3d3f"), tx + ty)
+    # Circuit breakers along the front.
+    for bx in (x0 + 0.45, x0 + 0.9, x0 + 1.35):
+        by = y0 + 1.05
+        s.box(bx - 0.04, by - 0.04, 2, 0.08, 0.08, 14, *(flat(s, rgb(steel) * k, 2) for k in (1.05, 0.9, 0.75)))
+        insulator(s, bx, by, 16, n=6, r=2.4)
+        s.box(bx - 0.03, by - 0.03, 36, 0.06, 0.06, 4, *(flat(s, c) for c in ("#a8a4ae", "#8e8a94", "#76727c")))
+        s.line(s.proj(bx, by, 40), s.proj(bx, y0 + 1.34, 58), rgb("#3e3d3f"), bx + by)
+    # Control kiosk.
+    kx, ky = x0 + a - 0.45, y0 + b - 0.42
+    s.box(kx, ky, 2, 0.32, 0.28, 16, flat(s, "#c8c2b6"),
+          lambda a_, b_, xs, ys: np.where(((a_ > 0.35) & (a_ < 0.65) & (b_ < 0.8))[:, None], rgb("#5b5a5c"), rgb("#d8d4cc")),
+          flat(s, "#c8c4bc"))
+    # Fence: chain link on concrete posts, a gate with a warning sign.
+    mesh = lambda a_, b_, xs, ys: np.concatenate([np.repeat(rgb("#b3aeb6")[None], len(a_), 0),
+                                                  (((xs + ys) % 3 == 0) | ((xs - ys) % 3 == 0) | (b_ > 0.9)).astype(float)[:, None] * 255], 1)
+    for o, e in (((x0, y0 + b, 2), (a, 0, 0)), ((x0 + a, y0, 2), (0, b, 0)), ((x0, y0, 2), (a, 0, 0)), ((x0, y0, 2), (0, b, 0))):
+        s.face(o, e, (0, 0, 16), mesh, light=1.0)
+        n = int(max(abs(e[0]), abs(e[1])) / 0.4)
+        for k in range(n + 1):
+            px, py = o[0] + e[0] * k / n, o[1] + e[1] * k / n
+            s.box(px - 0.015, py - 0.015, 2, 0.03, 0.03, 18, *(flat(s, c) for c in ("#c8c2b6", "#b3ab9e", "#9c9486")))
+    sign = lambda a_, b_, xs, ys: np.where((np.abs(a_ - 0.5) < 0.5 * (1 - b_))[:, None], rgb("#e0b030"), rgb("#2e2e32"))
+    s.face((x0 + a * 0.46, y0 + b + 0.01, 8), (0.1, 0, 0), (0, 0, 7), sign, light=1.0)
     s.outline(0.85)
     return s, (a, b)
 
@@ -3870,25 +3989,59 @@ def hospital(seed):
 
 
 def ambulance(seed, rot=0):
-    """Ambulance van along u (turned by rot): white body, red stripe, a
-    light bar on the roof, a dark windscreen at +u."""
-    s = Sprite(110, 80, 55, 55, seed)
+    """Ambulance in the style of the city's NPC cars, made longer: a white
+    low-poly body with a red stripe, a tapered cabin with dark glass up
+    front and a white box behind, a slatted grille with black lights, red
+    tail lights, a red and blue light bar on the roof, dark wheels. Along u,
+    front at +u (turned by rot)."""
+    s = Sprite(120, 96, 60, 62, seed)
     s.rot = rot
-    white, red = rgb("#f4f4f0"), rgb("#c8302a")
-    side = lambda a_, b_, xs, ys: np.where(((b_ > 0.35) & (b_ < 0.52))[:, None], red,
-                                           np.where(((b_ > 0.7) & (a_ > 0.8))[:, None], np.array(GLASS)[1], white))
-    nose = lambda a_, b_, xs, ys: np.where((b_ > 0.62)[:, None], np.array(GLASS)[(xs + ys) % 4] * 1.1,
-                                           np.where(((b_ > 0.35) & (b_ < 0.52))[:, None], red, white))
-    s.box(-0.3, -0.12, 3, 0.6, 0.24, 17, flat(s, white * 0.96), side, nose)
-    if rot:
-        s.face((-0.3, -0.12, 3), (0.6, 0, 0), (0, 0, 17), side, light="auto")
-        s.face((0.3, -0.12, 3), (0, 0.24, 0), (0, 0, 17), nose, light="auto")
-        s.face((-0.3, -0.12, 3), (0, 0.24, 0), (0, 0, 17), flat(s, white), light="auto")
-    s.box(0.12, -0.08, 20, 0.08, 0.16, 3, flat(s, "#3a6ad0"), flat(s, "#c8302a"), flat(s, "#3a6ad0"))
-    for x in (-0.22, 0.18):
-        for y in (-0.13, 0.11):
-            s.box(x, y, 0, 0.07, 0.02, 4, *(flat(s, "#1e1e22") for _ in range(3)))
-    s.outline(0.8)
+    white, red, glass = rgb("#f4f4f2"), rgb("#c8302a"), rgb("#26262a")
+    L, W = 0.66, 0.26
+    x0, x1, y0, y1 = -L / 2, L / 2, -W / 2, W / 2
+    zb, zm, zt = 3, 13, 26                                 # body bottom, waist, roof
+    fl = lambda c: flat(s, c, 2)
+    # Lower body: stripe on the sides, grille and lights at the front, tail lights behind.
+    stripe = lambda a_, b_, xs, ys: np.where(((b_ > 0.62) & (b_ < 0.9))[:, None], red, white)
+    def grille(a_, b_, xs, ys):
+        out = np.repeat(white[None], len(a_), 0)
+        slats = (a_ > 0.28) & (a_ < 0.72) & (b_ > 0.25) & (b_ < 0.75) & (np.mod(ys, 2) == 0)
+        out = np.where(slats[:, None], rgb("#3a3a3e"), out)
+        lights = (b_ > 0.35) & (b_ < 0.75) & ((a_ < 0.16) | (a_ > 0.84))
+        return np.where(lights[:, None], rgb("#1e1e22"), out)
+    tails = lambda a_, b_, xs, ys: np.where(((b_ > 0.5) & (b_ < 0.8) & ((a_ < 0.1) | (a_ > 0.9)))[:, None], red, white)
+    for yy in (y0, y1):
+        s.face((x0, yy, zb), (L, 0, 0), (0, 0, zm - zb), stripe, light="auto")
+    s.face((x1, y0, zb), (0, W, 0), (0, 0, zm - zb), grille, light="auto")
+    s.face((x0, y0, zb), (0, W, 0), (0, 0, zm - zb), tails, light="auto")
+    # Upper body: tapered like the car's cabin; glass over the front third,
+    # a white box (red stripe continued) over the rest.
+    iy, ixf, ixb = 0.03, 0.07, 0.02                        # taper at the sides, front, back
+    xg = x1 - L * 0.36                                     # where the glass starts
+    for yy, sgn in ((y0, 1), (y1, -1)):
+        yt = yy + sgn * iy
+        quad(s, (x0, yy, zm), (xg, yy, zm), (xg, yt, zt), (x0 + ixb, yt, zt), fl(white))
+        at = lambda z: ((z - zm) / (zt - zm))                       # the taper at height z
+        for z0, z1 in ((zm + 3, zm + 6),):                           # the stripe round the box
+            quad(s, (x0 + ixb * at(z0), yy + sgn * iy * at(z0), z0), (xg - 0.012, yy + sgn * iy * at(z0), z0),
+                 (xg - 0.012, yy + sgn * iy * at(z1), z1), (x0 + ixb * at(z1), yy + sgn * iy * at(z1), z1), fl(red))
+        quad(s, (xg, yy, zm), (x1, yy, zm), (x1 - ixf, yt, zt), (xg, yt, zt), fl(glass))
+        quad(s, (xg - 0.012, yy - sgn * 0.001, zm), (xg, yy - sgn * 0.001, zm), (xg, yt - sgn * 0.001, zt),
+             (xg - 0.012, yt - sgn * 0.001, zt), fl(white))                      # the pillar
+    quad(s, (x1, y0, zm), (x1, y1, zm), (x1 - ixf, y1 - iy, zt), (x1 - ixf, y0 + iy, zt), fl(glass))   # windscreen
+    quad(s, (x0, y0, zm), (x0, y1, zm), (x0 + ixb, y1 - iy, zt), (x0 + ixb, y0 + iy, zt), fl(white))  # rear doors
+    quad(s, (x0 + 0.005, y0 + 0.07, zm + 5), (x0 + 0.005, y1 - 0.07, zm + 5), (x0 + ixb * 0.8, y1 - 0.08, zt - 3),
+         (x0 + ixb * 0.8, y0 + 0.08, zt - 3), fl(glass))
+    quad(s, (x0 + ixb, y0 + iy, zt), (x1 - ixf, y0 + iy, zt), (x1 - ixf, y1 - iy, zt), (x0 + ixb, y1 - iy, zt), fl(white * 0.98),
+         light=1.0)
+    # Light bar (giroflex) near the front of the roof: blue, red, blue.
+    bx = x1 - ixf - 0.12
+    for k, c in enumerate(("#3a6ad0", "#c8302a", "#3a6ad0")):
+        s.box(bx, -0.09 + k * 0.06, zt, 0.07, 0.06, 3, fl(rgb(c) * 1.15), fl(rgb(c)), fl(rgb(c) * 0.85))
+    for x in (x0 + 0.1, x1 - 0.12):
+        for y in (y0, y1):
+            wheel(s, x, y, 3.2)
+    s.outline(0.78)
     return s
 
 

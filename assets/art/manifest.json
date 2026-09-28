@@ -2052,82 +2052,82 @@
  },
  "industry/truck-red.png": {
   "size": [
-   83,
-   62
+   85,
+   61
   ],
   "anchor": [
-   41,
+   42,
    42
   ]
  },
  "industry/truck-blue.png": {
   "size": [
-   83,
-   62
+   85,
+   61
   ],
   "anchor": [
-   41,
+   42,
    42
   ]
  },
  "industry/truck-red-r1.png": {
   "size": [
-   83,
-   62
+   85,
+   61
   ],
   "anchor": [
-   42,
+   43,
    42
   ]
  },
  "industry/truck-blue-r1.png": {
   "size": [
-   83,
-   62
+   85,
+   61
+  ],
+  "anchor": [
+   43,
+   42
+  ]
+ },
+ "industry/truck-red-r2.png": {
+  "size": [
+   85,
+   60
+  ],
+  "anchor": [
+   43,
+   42
+  ]
+ },
+ "industry/truck-blue-r2.png": {
+  "size": [
+   85,
+   60
+  ],
+  "anchor": [
+   43,
+   42
+  ]
+ },
+ "industry/truck-red-r3.png": {
+  "size": [
+   85,
+   60
   ],
   "anchor": [
    42,
    42
   ]
  },
- "industry/truck-red-r2.png": {
-  "size": [
-   83,
-   58
-  ],
-  "anchor": [
-   42,
-   39
-  ]
- },
- "industry/truck-blue-r2.png": {
-  "size": [
-   83,
-   58
-  ],
-  "anchor": [
-   42,
-   39
-  ]
- },
- "industry/truck-red-r3.png": {
-  "size": [
-   83,
-   58
-  ],
-  "anchor": [
-   41,
-   39
-  ]
- },
  "industry/truck-blue-r3.png": {
   "size": [
-   83,
-   58
+   85,
+   60
   ],
   "anchor": [
-   41,
-   39
+   42,
+   42
   ]
  },
  "industry/workshop.png": {
@@ -2156,12 +2156,12 @@
  },
  "industry/cell-tower.png": {
   "size": [
-   20,
-   193
+   76,
+   214
   ],
   "anchor": [
-   10,
-   188
+   38,
+   195
   ]
  },
  "industry/dish.png": {
@@ -2186,12 +2186,12 @@
  },
  "industry/power-station.png": {
   "size": [
-   230,
-   162
+   234,
+   165
   ],
   "anchor": [
-   115,
-   105
+   117,
+   108
   ],
   "footprint": [
    2.0,
@@ -2391,22 +2391,22 @@
  },
  "civic/ambulance.png": {
   "size": [
-   54,
-   45
+   58,
+   51
   ],
   "anchor": [
-   27,
-   33
+   29,
+   39
   ]
  },
  "civic/ambulance-r1.png": {
   "size": [
-   54,
-   45
+   58,
+   51
   ],
   "anchor": [
-   27,
-   33
+   29,
+   39
   ]
  },
  "buildings/pizza.png": {

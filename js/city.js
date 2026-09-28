@@ -1580,12 +1580,12 @@
       const turnedName = (name, k) => (k ? name.replace('.png', `-r${k}.png`) : name);
       const wet = (u, v) => /pond|pool|canal|shore|water/.test((groundMap.get(key(Math.floor(u), Math.floor(v))) || [''])[0]);
       const clear = (u, v, r) => !lots.some(l => u > l[1] - r && u < l[2] + r && v > l[3] - r && v < l[4] + r) &&
-        !props.some(q => Math.hypot(q[1] - u, q[2] - v) < r + 0.15) &&
+        ![...props, ...late].some(q => Math.hypot(q[1] - u, q[2] - v) < r + (/truck|ambulance|stack/.test(q[0]) ? 0.75 : 0.15)) &&
         ![[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].some(([a, b]) => wet(u + a, v + b));
       const stops = [];
       const SIDES = [[[0, 1], 0], [[-1, 0], 1], [[0, -1], 2], [[1, 0], 3]];      // side of the block, sprite turn
       for (const c of cells.values()) {
-        if (c.gasStop || (c.sup >= 0 && ['cats', 'parking', 'nuclear'].includes(supers[c.sup].kind))) continue;   // their own furniture
+        if (c.gasStop || (c.sup >= 0 && ['cats', 'parking', 'nuclear', 'factory', 'port'].includes(supers[c.sup].kind))) continue;   // their own furniture
         const u0 = roadAt(c.i) + 1, v0 = roadAt(c.j) + 1;
         const busy = c.type === 'downtown' || c.type === 'plaza';
         for (const [[du, dv], k] of SIDES) {
