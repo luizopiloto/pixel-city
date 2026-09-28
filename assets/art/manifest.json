@@ -1447,6 +1447,34 @@
   ],
   "tile": true
  },
+ "ground/lot-lines-u-lo.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/lot-lines-u-hi.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/lot-lines-v-lo.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
+ "ground/lot-lines-v-hi.png": {
+  "size": [
+   128,
+   65
+  ],
+  "tile": true
+ },
  "parking/fence.png": {
   "size": [
    66,
@@ -1999,11 +2027,21 @@
  },
  "industry/chimney.png": {
   "size": [
-   118,
-   207
+   28,
+   139
   ],
   "anchor": [
    14,
+   132
+  ]
+ },
+ "industry/chimney-smoke.png": {
+  "size": [
+   113,
+   74
+  ],
+  "anchor": [
+   9,
    200
   ],
   "frames": 16,
@@ -2162,17 +2200,31 @@
  },
  "nuclear/cooling-tower.png": {
   "size": [
-   274,
-   366
+   206,
+   261
   ],
   "anchor": [
    103,
+   209
+  ],
+  "footprint": [
+   2.3,
+   2.3
+  ]
+ },
+ "nuclear/steam.png": {
+  "size": [
+   202,
+   154
+  ],
+  "anchor": [
+   31,
    314
   ],
   "frames": 16,
   "footprint": [
-   2.3,
-   2.3
+   0.1,
+   0.1
   ]
  },
  "nuclear/reactor.png": {

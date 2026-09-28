@@ -1901,15 +1901,20 @@ def concrete_tile(seed, stains=False):
     return tile_image(col)
 
 
-def lot_tile(seed, lines=None):
+def lot_tile(seed, lines=None, half=None):
     """Asphalt, with white stall lines every half tile across the given
     axis: lines="u" draws lines parallel to u (stalls side by side along
-    v), "v" lines parallel to v."""
+    v), "v" lines parallel to v. half="lo" / "hi" keeps them to the 0.7 of
+    the tile at the low / high end of their length (a stall one car deep)."""
     col = np.array(ground(**ASPHALT, seed=seed))[..., :3].astype(float)
     if lines:
         u, v = uv_of_tile()
-        t = v if lines == "u" else u
+        t, d = (v, u) if lines == "u" else (u, v)
         paint = np.abs(np.mod(t * 2 + 0.5, 1) - 0.5) < 0.035
+        if half == "lo":
+            paint &= d < 0.7
+        elif half == "hi":
+            paint &= d > 0.3
         col[paint] = rgb("#bdb7a8") + (np.random.default_rng(seed).random((paint.sum(), 1)) - 0.5) * 10
     return tile_image(col)
 
@@ -3225,9 +3230,9 @@ def bag_tex(W=18, H=26):
     return t
 
 
-def chimney(seed, p, h=120):
-    """Tall brick factory chimney at phase p: brick courses with iron bands,
-    a ladder, a corbelled top, smoke puffs rising, drifting and thinning."""
+def chimney(seed, h=120):
+    """Tall brick factory chimney: brick courses with iron bands, a ladder
+    and a corbelled top (its smoke is chimney_smoke, drawn over everything)."""
     s = Sprite(170, 270, 55, 225, seed)
     for z in range(0, h, 6):
         r = 0.16 - 0.06 * z / h
@@ -3236,8 +3241,15 @@ def chimney(seed, p, h=120):
         ring(s, r, z, 6, lambda k, col=col: flat(s, col, 5), n=12)
     ring(s, 0.13, h, 6, lambda k: flat(s, "#6e3a30", 3), n=12)
     disk(s, 0.12, h + 6, flat(s, "#1e1e22", 2), n=12)
-    lx = s.proj(0.1, 0.1, 4), s.proj(0.07, 0.07, h)                      # ladder
-    s.line(*lx, rgb("#3e3d3f"), 0.3)
+    s.line(s.proj(0.1, 0.1, 4), s.proj(0.07, 0.07, h), rgb("#3e3d3f"), 0.3)
+    s.outline(0.8)
+    return s
+
+
+def chimney_smoke(seed, p, h=120):
+    """The chimney's smoke at phase p (same origin as chimney): puffs rise,
+    drift off and thin out."""
+    s = Sprite(170, 270, 55, 225, seed)
     grey = ramp("#8e8a92", "#a8a4ae", "#c4c0c8", "#dcd8e0")
     for k in range(7):
         age = (p + k / 7) % 1
@@ -3408,9 +3420,9 @@ def power_station(seed):
 
 # ---------- nuclear power plant ----------
 
-def cooling_tower(seed, p, R=1.15, H=170):
-    """Hyperbolic cooling tower (radius R tiles at the base, H px tall) at
-    phase p: white steam billows from its mouth and drifts off."""
+def cooling_tower(seed, R=1.15, H=170):
+    """Hyperbolic cooling tower (radius R tiles at the base, H px tall); its
+    steam is tower_steam, drawn over everything."""
     s = Sprite(420, 460, 210, 400, seed)
     for z in range(0, H, 5):                                   # the waist narrows then flares at the top
         t = z / H
@@ -3424,6 +3436,14 @@ def cooling_tower(seed, p, R=1.15, H=170):
         a = 2 * math.pi * k / 6
         s.box(R * 0.98 * math.cos(a) - 0.03, R * 0.98 * math.sin(a) - 0.03, 0, 0.06, 0.06, 10,
               *(flat(s, c) for c in ("#bdb3a2", "#a69c8c", "#8e8680")))
+    s.outline(0.72)
+    return s
+
+
+def tower_steam(seed, p, R=1.15, H=170):
+    """The cooling tower's steam at phase p (same origin): white billows
+    rising from the mouth and drifting off."""
+    s = Sprite(420, 460, 210, 400, seed)
     steam = ramp("#c8c4cc", "#dcd8e0", "#ecebf0", "#f8f8fa")
     for k in range(9):
         age = (p + k / 9) % 1
@@ -3859,6 +3879,9 @@ def main():
     save_tile(concrete_tile(167, stains=True), "ground/concrete-b.png")
     save_tile(lot_tile(161, "u"), "ground/lot-lines-u.png")
     save_tile(lot_tile(162, "v"), "ground/lot-lines-v.png")
+    for ax in ("u", "v"):
+        for hf in ("lo", "hi"):
+            save_tile(lot_tile(162, ax, hf), f"ground/lot-lines-{ax}-{hf}.png")
     save(fence(163), "parking/fence.png")
     save(fence(163, rot=1), "parking/fence-r1.png")
     save(park_sign(166), "parking/sign.png")
@@ -3896,7 +3919,8 @@ def main():
     for kind, seed in (("plant", 221), ("cola", 222), ("chips", 223)):
         spr, (fa, fb) = plant(seed, kind)
         save(spr, f"industry/{kind}.png", footprint=[fa, fb])
-    save_anim([chimney(224, f / 16) for f in range(16)], "industry/chimney.png", footprint=[0.3, 0.3])
+    save(chimney(224), "industry/chimney.png")
+    save_anim([chimney_smoke(224, f / 16) for f in range(16)], "industry/chimney-smoke.png", footprint=[0.3, 0.3])
     for k in range(4):
         save(truck(225, "#c8402a", k), f"industry/truck-red{turn(k)}.png")
         save(truck(226, "#3a5a9a", k), f"industry/truck-blue{turn(k)}.png")
@@ -3909,7 +3933,8 @@ def main():
     spr, (fa, fb) = power_station(232)
     save(spr, "industry/power-station.png", footprint=[fa, fb])
     # Nuclear power plant.
-    save_anim([cooling_tower(240, f / 16) for f in range(16)], "nuclear/cooling-tower.png", footprint=[2.3, 2.3])
+    save(cooling_tower(240), "nuclear/cooling-tower.png", footprint=[2.3, 2.3])
+    save_anim([tower_steam(240, f / 16) for f in range(16)], "nuclear/steam.png", footprint=[0.1, 0.1])
     spr, (fa, fb) = reactor(241)
     save(spr, "nuclear/reactor.png", footprint=[fa, fb])
     spr, (fa, fb) = turbine_hall(242)
