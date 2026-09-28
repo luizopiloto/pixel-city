@@ -3951,23 +3951,38 @@ def hospital(seed):
     x0, y0 = -a / 2, -b / 2
     rng = np.random.default_rng(seed)
 
-    def wall(length_px, doors):
+    def wall(length_px, door_w):
+        """Whole window bays between solid corner piers; on the ground floor
+        glazing in the same bays and a framed double glass door (door_w px
+        wide) in the middle, with a transom and a frame."""
+        pier = 4
+        n = max(1, round((length_px - 2 * pier) / 16))
+        bay = (length_px - 2 * pier) / n
         def sh(a_, b_, xs, ys):
             along, z = a_ * length_px, b_ * h
             out = np.repeat(rgb("#ecebe6")[None], len(a_), 0)
-            win = (np.mod(z, fh) > 9) & (np.mod(z, fh) < 20) & (z > fh)
-            out = np.where(win[:, None], np.array(GLASS_BLUE)[(xs + ys) % 4] * 1.15, out)
-            out = np.where((win & (np.mod(along, 16) < 1))[:, None], rgb("#d0cec8"), out)
+            k = np.floor((along - pier) / bay)
+            inb = along - pier - k * bay                                   # position inside its bay
+            bays = (along > pier) & (along < length_px - pier) & (inb > 2) & (inb < bay - 1)
+            glass = np.array(GLASS_BLUE)[(xs + ys) % 4] * 1.15
+            win = bays & (np.mod(z, fh) > 9) & (np.mod(z, fh) < 20) & (z > fh)
+            out = np.where(win[:, None], glass, out)
             out = np.where((np.mod(z, fh) < 2)[:, None], rgb("#c8c6be"), out)            # floor bands
-            out = np.where((z < fh)[:, None] & (np.mod(along, 20) > 4)[:, None] & (z > 4)[:, None] & (z < fh - 4)[:, None],
-                           np.array(GLASS_BLUE)[(xs + ys) % 4] * 1.25, out)             # glazed ground floor
-            for d0, d1 in doors:
-                dd = (along >= d0 * length_px) & (along < d1 * length_px) & (z < fh - 4)
-                out = np.where(dd[:, None], np.array(GLASS_BLUE)[1] * 1.35, out)
-                out = np.where((dd & (np.abs(along - (d0 + d1) / 2 * length_px) < 0.6))[:, None], rgb("#5b5a5c"), out)
+            ground = bays & (z > 5) & (z < fh - 5)
+            out = np.where(ground[:, None], glass * 1.08, out)                            # glazed ground floor
+            if door_w:
+                mid = length_px / 2
+                dz = (np.abs(along - mid) < door_w / 2 + 2) & (z < fh - 2)
+                out = np.where(dz[:, None], rgb("#8e8a94"), out)                          # frame
+                leaf = (np.abs(along - mid) < door_w / 2) & (z < fh - 7)
+                out = np.where(leaf[:, None], np.array(GLASS_BLUE)[1] * 1.35, out)       # the two glass leaves
+                out = np.where((leaf & (np.abs(along - mid) < 0.6))[:, None], rgb("#5b5a5c"), out)
+                transom = (np.abs(along - mid) < door_w / 2) & (z >= fh - 6) & (z < fh - 3)
+                out = np.where(transom[:, None], glass * 1.2, out)
+                out = np.where((leaf & (z < 1.5))[:, None], rgb("#5b5a5c"), out)          # threshold
             return out + (s.grain[ys, xs] - 0.5)[:, None] * 3
         return sh
-    s.box(x0, y0, 0, a, b, h, flat(s, "#d8d6d0"), wall(a * 71.6, [(0.46, 0.54)]), wall(b * 71.6, [(0.3, 0.7)]))
+    s.box(x0, y0, 0, a, b, h, flat(s, "#d8d6d0"), wall(a * 71.6, 22), wall(b * 71.6, 14))
     s.box(x0 - 0.04, y0 - 0.04, h, a + 0.08, b + 0.08, 4, *(flat(s, c) for c in ("#d8d6d0", "#c8c6be", "#b8b6ae")))
     draw_helipad(s, x0 + a * 0.48, y0, a * 0.36, b, h + 4)          # the helipad
     for k in range(3):                                            # plant at the far end of the roof
