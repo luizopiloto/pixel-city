@@ -1959,7 +1959,41 @@ TV_R0, TV_H = 1.35, 440                          # tower half-width on the roof,
 TV_CANVAS = (700, 1180, 350, 900)
 TV_DECKS = [(172, 24), (316, 14)]                # observation decks: z above the roof, height
 LIFT_R = 0.24                                    # elevator shaft half-width
-LIFT_FRAMES = 64                                 # 8 s up and down at 8 fps
+LIFT_STOP_S, LIFT_SPEED = 3.0, 40.0              # s at each floor, px/s between (8 fps frames)
+CABIN_H = 18                                     # cabin height, px
+
+
+def lift_stops():
+    """The cabin's stops, z above the ground: inside the studio, the first
+    deck, the top deck (it rides the shaft up and back down through them)."""
+    roof = TV_PODIUM[2] * FLOOR + 4 + 2
+    return [14, roof + TV_DECKS[0][0] + 2, roof + TV_DECKS[-1][0] - 2]
+
+
+def lift_schedule():
+    """(time, z) keyframes for one round trip, waiting LIFT_STOP_S at each
+    stop, easing in and out between them."""
+    stops = lift_stops()
+    route = stops + stops[-2:0:-1]                 # up, then back down to the start
+    keys, t = [], 0.0
+    for k, z in enumerate(route):
+        keys.append((t, z)); t += LIFT_STOP_S; keys.append((t, z))
+        nxt = route[(k + 1) % len(route)]
+        t += abs(nxt - z) / LIFT_SPEED
+    return keys, t
+
+
+def lift_z(t):
+    keys, total = lift_schedule()
+    t %= total
+    for (t0, z0), (t1, z1) in zip(keys, keys[1:] + [(total, keys[0][1])]):
+        if t0 <= t < t1:
+            q = (t - t0) / (t1 - t0) if t1 > t0 else 0
+            return z0 + (z1 - z0) * q * q * (3 - 2 * q)
+    return keys[0][1]
+
+
+LIFT_FRAMES = int(round(lift_schedule()[1] * 8))   # one round trip at 8 fps
 
 
 def tv_front(s):
@@ -2070,10 +2104,17 @@ def tv_station(seed):
         for k, (ax, ay) in enumerate(((-1, -1), (1, -1), (1, 1), (-1, 1))):
             bx, by = ((1, -1), (1, 1), (-1, 1), (-1, -1))[k]
             strut((ax * LIFT_R, ay * LIFT_R, z), (bx * LIFT_R, by * LIFT_R, z), rgb("#8e8897"), thick=1)
-    s.box(-LIFT_R - 0.03, -LIFT_R - 0.03, z0r, 2 * LIFT_R + 0.06, 2 * LIFT_R + 0.06, 3,
-          *(flat(s, c) for c in ("#8e8680", "#bdb3a2", "#a69c8c")))                 # landing on the roof
     for dz, dh in TV_DECKS:
         deck(dz, half(dz) + (0.1 if dz == TV_DECKS[0][0] else 0.08), dh)
+
+    def well(z):
+        """The shaft's opening: a dark hole in a steel collar at height z."""
+        R, w = LIFT_R + 0.05, 0.06
+        s.face((-LIFT_R, -LIFT_R, z + 0.5), (2 * LIFT_R, 0, 0), (0, 2 * LIFT_R, 0), flat(s, "#1e1e22", 2))
+        for x, y, sx, sy in ((-R, -R, 2 * R, w), (-R, R - w, 2 * R, w), (-R, -R, w, 2 * R), (R - w, -R, w, 2 * R)):
+            s.box(x, y, z, sx, sy, 5, *(flat(s, c) for c in ("#8e8897", "#716f74", "#5b5a5c")))
+    well(z0r)                                          # into the studio
+    well(z0r + TV_DECKS[0][0] + TV_DECKS[0][1] + 4)    # through the first deck
     for z in range(H, H + 150, 4):                     # mast, striped, red light on top
         w = 0.1 * (1 - (z - H) / 190)
         s.box(-w / 2, -w / 2, z0r + z, w, w, 4, *(flat(s, band(z - H + 22) * k_) for k_ in (1.0, 0.9, 0.75)))
@@ -2321,16 +2362,11 @@ def led_ad(s, k, t, L, Hp):
 
 def tv_lift(seed, f, depth):
     """Frame f of the elevator cabin riding the tower's shaft, drawn over the
-    station: `depth` is the station's own depth buffer, so the legs and decks
-    in front hide it. It waits at the roof and the top deck, easing between."""
+    station: `depth` is the station's own depth buffer, so the studio, legs
+    and decks in front hide it (inside the studio it is out of sight)."""
     s = Sprite(*TV_CANVAS, seed)
     s.depth = depth.copy()
-    t = f / LIFT_FRAMES
-    phase = min(1, max(0, (t - 0.1) / 0.35)) if t < 0.5 else 1 - min(1, max(0, (t - 0.6) / 0.35))
-    ease = phase * phase * (3 - 2 * phase)
-    a, b, floors = TV_PODIUM
-    roof = floors * FLOOR + 4 + 2
-    z = roof + 3 + ease * (TV_DECKS[-1][0] - 22)
+    z = lift_z(f / 8)
     r = LIFT_R - 0.04
 
     def glass(a_, b_, xs, ys):
@@ -2339,8 +2375,8 @@ def tv_lift(seed, f, depth):
         pane = np.array(GLASS_BLUE)[(xs // 2 + ys) % 4] * 1.25
         out = np.where(rail[:, None], rgb("#c8c2b6"), pane)
         return np.where(frame[:, None], rgb("#b8964a"), out)
-    s.box(-r, -r, z, 2 * r, 2 * r, 22, flat(s, "#8a6a2e"), glass, glass)
-    s.box(-r - 0.01, -r - 0.01, z + 22, 2 * r + 0.02, 2 * r + 0.02, 3, *(flat(s, c) for c in ("#b8964a", "#a08238", "#86692c")))
+    s.box(-r, -r, z, 2 * r, 2 * r, CABIN_H, flat(s, "#8a6a2e"), glass, glass)
+    s.box(-r - 0.01, -r - 0.01, z + CABIN_H, 2 * r + 0.02, 2 * r + 0.02, 3, *(flat(s, c) for c in ("#b8964a", "#a08238", "#86692c")))
     s.alpha[s.depth == depth] = 0                   # keep only the cabin, where it is in front
     return s
 

@@ -2546,13 +2546,13 @@
  "landmarks/tv-lift.png": {
   "size": [
    54,
-   307
+   351
   ],
   "anchor": [
    27,
-   397
+   442
   ],
-  "frames": 64,
+  "frames": 254,
   "footprint": [
    0.1,
    0.1
