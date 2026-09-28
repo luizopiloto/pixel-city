@@ -3654,6 +3654,91 @@ def turbine_hall(seed, a=3.0, b=1.4):
     return s, (a, b)
 
 
+# ---------- hospital ----------
+
+def cross_tex(D=26):
+    """A red cross on a white round-cornered board."""
+    t = np.zeros((D, D, 4))
+    t[1:D - 1, 1:D - 1] = [*rgb("#f4f4f0"), 255]
+    t[0, 2:D - 2] = t[D - 1, 2:D - 2] = t[2:D - 2, 0] = t[2:D - 2, D - 1] = [*rgb("#f4f4f0"), 255]
+    w = D // 5
+    c = D // 2
+    t[4:D - 4, c - w:c + w] = [*rgb("#c8302a"), 255]
+    t[c - w:c + w, 4:D - 4] = [*rgb("#c8302a"), 255]
+    return t
+
+
+def hospital(seed):
+    """Hospital: a long white block of five floors with blue ribbon
+    windows, a lobby canopy at the centre of the front, a red EMERGENCY bay
+    at the +u end, HOSPITAL on the facade, a red cross board on the roof and
+    a helipad."""
+    s = Sprite(520, 420, 260, 300, seed)
+    a, b, floors, fh = 4.6, 1.6, 5, 28
+    h = floors * fh + 4
+    x0, y0 = -a / 2, -b / 2
+    rng = np.random.default_rng(seed)
+
+    def wall(length_px, doors):
+        def sh(a_, b_, xs, ys):
+            along, z = a_ * length_px, b_ * h
+            out = np.repeat(rgb("#ecebe6")[None], len(a_), 0)
+            win = (np.mod(z, fh) > 9) & (np.mod(z, fh) < 20) & (z > fh)
+            out = np.where(win[:, None], np.array(GLASS_BLUE)[(xs + ys) % 4] * 1.15, out)
+            out = np.where((win & (np.mod(along, 16) < 1))[:, None], rgb("#d0cec8"), out)
+            out = np.where((np.mod(z, fh) < 2)[:, None], rgb("#c8c6be"), out)            # floor bands
+            out = np.where((z < fh)[:, None] & (np.mod(along, 20) > 4)[:, None] & (z > 4)[:, None] & (z < fh - 4)[:, None],
+                           np.array(GLASS_BLUE)[(xs + ys) % 4] * 1.25, out)             # glazed ground floor
+            for d0, d1 in doors:
+                dd = (along >= d0 * length_px) & (along < d1 * length_px) & (z < fh - 4)
+                out = np.where(dd[:, None], np.array(GLASS_BLUE)[1] * 1.35, out)
+                out = np.where((dd & (np.abs(along - (d0 + d1) / 2 * length_px) < 0.6))[:, None], rgb("#5b5a5c"), out)
+            return out + (s.grain[ys, xs] - 0.5)[:, None] * 3
+        return sh
+    s.box(x0, y0, 0, a, b, h, flat(s, "#d8d6d0"), wall(a * 71.6, [(0.46, 0.54)]), wall(b * 71.6, [(0.3, 0.7)]))
+    s.box(x0 - 0.04, y0 - 0.04, h, a + 0.08, b + 0.08, 4, *(flat(s, c) for c in ("#d8d6d0", "#c8c6be", "#b8b6ae")))
+    draw_helipad(s, x0 + a * 0.48, y0, a * 0.36, b, h + 4)          # the helipad
+    for k in range(3):                                            # plant at the far end of the roof
+        s.box(x0 + a - 0.42, y0 + 0.15 + k * 0.45, h + 4, 0.3, 0.3, 10, fan_top(s), flat(s, "#bdb3a2"), flat(s, "#a69c8c"))
+    roof_board(s, x0, y0, a * 0.48, b, h + 4, "HOSPITAL", "#f4f4f0", "#c8302a", w=1.4, tex=cross_tex(), tex_w=0.42, tex_h=26)
+    # Lobby canopy at the centre of the front.
+    s.box(-0.5, y0 + b, 26, 1.0, 0.36, 4, *(flat(s, c) for c in ("#3a6ab0", "#2f5a98", "#244880")))
+    for px in (-0.46, 0.43):
+        s.box(px, y0 + b + 0.32, 0, 0.03, 0.03, 26, *(flat(s, c, 2) for c in STEEL))
+    # Emergency bay: a red canopy over the +u end of the front.
+    ex = x0 + a - 1.1
+    band = lambda length: (lambda a_, b_, xs, ys: np.where(((b_ > 0.25) & (b_ < 0.75))[:, None], rgb("#f4f4f0"), rgb("#c8302a")))
+    s.box(ex, y0 + b, 24, 0.95, 0.5, 12, flat(s, "#b8b6ae"), band(0.95), band(0.5))
+    wall_sign(s, ex + 0.475, y0 + b + 0.5, 25, 0.92, "EMERGENCY", "#c8302a", "#f4f4f0", 10)
+    for px in (ex + 0.03, ex + 0.9):
+        s.box(px, y0 + b + 0.45, 0, 0.03, 0.03, 24, *(flat(s, c, 2) for c in STEEL))
+    s.outline(0.72)
+    return s, (a, b)
+
+
+def ambulance(seed, rot=0):
+    """Ambulance van along u (turned by rot): white body, red stripe, a
+    light bar on the roof, a dark windscreen at +u."""
+    s = Sprite(110, 80, 55, 55, seed)
+    s.rot = rot
+    white, red = rgb("#f4f4f0"), rgb("#c8302a")
+    side = lambda a_, b_, xs, ys: np.where(((b_ > 0.35) & (b_ < 0.52))[:, None], red,
+                                           np.where(((b_ > 0.7) & (a_ > 0.8))[:, None], np.array(GLASS)[1], white))
+    nose = lambda a_, b_, xs, ys: np.where((b_ > 0.62)[:, None], np.array(GLASS)[(xs + ys) % 4] * 1.1,
+                                           np.where(((b_ > 0.35) & (b_ < 0.52))[:, None], red, white))
+    s.box(-0.3, -0.12, 3, 0.6, 0.24, 17, flat(s, white * 0.96), side, nose)
+    if rot:
+        s.face((-0.3, -0.12, 3), (0.6, 0, 0), (0, 0, 17), side, light="auto")
+        s.face((0.3, -0.12, 3), (0, 0.24, 0), (0, 0, 17), nose, light="auto")
+        s.face((-0.3, -0.12, 3), (0, 0.24, 0), (0, 0, 17), flat(s, white), light="auto")
+    s.box(0.12, -0.08, 20, 0.08, 0.16, 3, flat(s, "#3a6ad0"), flat(s, "#c8302a"), flat(s, "#3a6ad0"))
+    for x in (-0.22, 0.18):
+        for y in (-0.13, 0.11):
+            s.box(x, y, 0, 0.07, 0.02, 4, *(flat(s, "#1e1e22") for _ in range(3)))
+    s.outline(0.8)
+    return s
+
+
 # ---------- recreation ----------
 
 REC_WOOD = ("#8a6751", "#765743", "#5f4646")
@@ -3997,6 +4082,11 @@ def main():
     save(spr, "nuclear/office.png", footprint=[fa, fb])
     save(guardhouse(246), "nuclear/guardhouse.png")
     save(check_canopy(247), "nuclear/checkpoint.png")
+    # Hospital.
+    spr, (fa, fb) = hospital(250)
+    save(spr, "civic/hospital.png", footprint=[fa, fb])
+    save(ambulance(251), "civic/ambulance.png")
+    save(ambulance(251, 1), "civic/ambulance-r1.png")
     # Plaza shops.
     for fn, name, seed in ((pizza_place, "pizza", 190), (bistro, "bistro", 191), (cake_shop, "cakes", 192),
                            (toy_shop, "toys", 193), (bakery, "bakery", 198)):

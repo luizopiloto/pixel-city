@@ -388,6 +388,7 @@
     }
     merge(SUPER_COUNT, [[3, 2], [2, 3]], true);
     merge(1, [[2, 2]], true, 'downtown', -1, 'tv');
+    merge(1, [[2, 1]], true, 'downtown', -1, 'hospital');
     merge(1, [[1, 2], [2, 1]], true, 'downtown', -1, 'parking');
     merge(DOWNTOWN_SQUARES[0] + Math.floor(rng() * (DOWNTOWN_SQUARES[1] - DOWNTOWN_SQUARES[0] + 1)), [[2, 2]], true,
       'downtown', -1, 'square');
@@ -963,6 +964,20 @@
       if (rng() < 0.6) stack(u + 2.2, v + 0.45, 0);
     }
 
+    // Hospital (one 2×1 downtown block): the building along the back, its
+    // lobby and the emergency bay facing the street, ambulances at the bay,
+    // trees and benches on the forecourt.
+    function hospitalBlock({ u0, v0, district }) {
+      pave(u0, v0, 7, 3);
+      artLot('civic/hospital.png', u0 + 3.5, v0 + 1.2, district);
+      late.push(['art/civic/ambulance.png', u0 + 5.1, v0 + 2.75, [u0 + 4.8, u0 + 5.4, v0 + 2.63, v0 + 2.87]],
+        ['art/civic/ambulance.png', u0 + 6.35, v0 + 2.7, [u0 + 6.05, u0 + 6.65, v0 + 2.58, v0 + 2.82]]);
+      for (const [tu, tv] of [[u0 + 0.45, v0 + 2.55], [u0 + 0.45, v0 + 0.5]]) artProp(pick(CITY_TREES), tu, tv);
+      prop('props/bench-ne.png', u0 + 1.6, v0 + 2.7);
+      prop('props/bench-ne.png', u0 + 2.4, v0 + 2.7);
+      prop('lamp-white.png', u0 + 1.2, v0 + 2.8);
+    }
+
     // Town square (2×2 downtown): a row of buildings along its back edge
     // facing in and one along its street edge, around a grass square with a
     // fountain, corner trees, benches, lamps and flower beds.
@@ -999,7 +1014,7 @@
     }
 
     supers.filter(sb => sb.type === 'downtown')
-      .forEach(sb => ({ square: townSquare, parking: parkingLot, tv: tvStation }[sb.kind] || downtown)(sb));
+      .forEach(sb => ({ square: townSquare, parking: parkingLot, tv: tvStation, hospital: hospitalBlock }[sb.kind] || downtown)(sb));
 
     // Art sprites (assets/art, see tools/art.py) stand at their footprint
     // center: lots as ['art:<name>', u0, u1, v0, v1, district], props as
@@ -1596,7 +1611,7 @@
     // outside the footprint, free of props; count buildings that
     // intrude on another's entrance (tools/sim.js fails on any).
     const EXTRA = {                                  // sprite ground beyond the footprint: [-u, +u, -v, +v]
-      'buildings/brick-4.png': [0, 0, 0, CANOPY], 'buildings/hotel.png': [0, 0, 0, CANOPY], 'landmarks/tv-station.png': [0, 0, 0, 0.36], 'houses/diner.png': [0, 0.18, 0, 0],
+      'buildings/brick-4.png': [0, 0, 0, CANOPY], 'buildings/hotel.png': [0, 0, 0, CANOPY], 'civic/hospital.png': [0, 0, 0, 0.5], 'landmarks/tv-station.png': [0, 0, 0, 0.36], 'houses/diner.png': [0, 0.18, 0, 0],
       'buildings/fastfood.png': [0, 0.34, 0, 0], 'buildings/bistro.png': [0, 0.58, 0, 0], 'buildings/apartment-2.png': [0, 0.22, 0, 0.3],
       'civic/church.png': [0.04, 0.04, 0, 0.36], 'civic/bank.png': [0, 0, 0, 0.36],
     };

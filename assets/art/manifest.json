@@ -2313,6 +2313,40 @@
    105
   ]
  },
+ "civic/hospital.png": {
+  "size": [
+   408,
+   359
+  ],
+  "anchor": [
+   204,
+   250
+  ],
+  "footprint": [
+   4.6,
+   1.6
+  ]
+ },
+ "civic/ambulance.png": {
+  "size": [
+   54,
+   45
+  ],
+  "anchor": [
+   27,
+   33
+  ]
+ },
+ "civic/ambulance-r1.png": {
+  "size": [
+   54,
+   45
+  ],
+  "anchor": [
+   27,
+   33
+  ]
+ },
  "buildings/pizza.png": {
   "size": [
    165,
