@@ -5,7 +5,11 @@ random routes, followed by the camera and a GPS phone mini-map.
 
 Every load builds a new island city: an irregular downtown of about 256
 blocks (with merged superblocks, long blocks and town squares with
-fountains) and suburb, park and plaza districts around it, ringed by
+fountains, a TV tower and a parking lot) and suburb, park and plaza
+districts around it; on the north coast a port (quay cranes, container
+yards, cargo ships, warehouses, customs) and an industrial district
+(factories with smoking chimneys, the Cola and Chips works, truck parks),
+and a nuclear power plant on its own block; the island is ringed by
 beaches, piers and a lighthouse. The hero starts in a downtown parking
 lot. Other cars roam the streets on endless random routes, lighter in the
 suburbs; every 4-way crossing touching downtown or the plaza district has

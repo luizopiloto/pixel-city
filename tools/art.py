@@ -2843,6 +2843,546 @@ def air_dancer(seed, p, color="#c8402a", arms="#f2c06a"):
     return s
 
 
+# ---------- port ----------
+
+CONTAINER_COLS = ["#a8402a", "#2f5a88", "#3d6a3e", "#c8743a", "#8e8897", "#3f6f73", "#c8a030", "#6a3a5a"]
+CL, CW, CH = 0.62, 0.25, 15                      # container length (along u), width, height px
+
+
+def ribs(s, color, pitch=2):
+    c = rgb(color)
+    return lambda a_, b_, xs, ys: np.where((xs % pitch == 0)[:, None], c * 0.82, c) + (s.grain[ys, xs] - 0.5)[:, None] * 4
+
+
+def container(s, x, y, z, color, along_u=True):
+    """One shipping container with a ribbed skin, doors at its +u / +v end."""
+    L, W = (CL, CW) if along_u else (CW, CL)
+    c = rgb(color)
+    s.box(x, y, z, L, W, CH, flat(s, c * 1.08, 4), ribs(s, color), ribs(s, color, 3))
+    s.box(x, y, z + CH - 1, L, W, 1, flat(s, c * 1.15, 3), flat(s, c * 0.7, 3), flat(s, c * 0.7, 3))
+
+
+def container_stack(seed, rows=2, tiers=3, cols=1, rot=0):
+    """A block of containers, `cols` along u × `rows` across × `tiers` high,
+    some tiers short a box. Turned by rot."""
+    s = Sprite(160, 150, 80, 110, seed)
+    s.rot = rot
+    rng = np.random.default_rng(seed)
+    x0, y0 = -cols * CL / 2, -rows * (CW + 0.01) / 2
+    for t in range(tiers):
+        for r in range(rows):
+            for c in range(cols):
+                if t and rng.random() < 0.18:
+                    continue
+                container(s, x0 + c * CL, y0 + r * (CW + 0.01), t * CH, CONTAINER_COLS[rng.integers(len(CONTAINER_COLS))])
+    s.outline(0.8)
+    return s
+
+
+def gantry_crane(seed, rot=0, color="#3a5a9a"):
+    """Ship-to-shore container crane: an A-frame portal on four legs, its
+    boom out over the water toward -v (turned by rot), machinery house and
+    a spreader hanging on cables."""
+    s = Sprite(260, 300, 130, 250, seed)
+    s.rot = rot
+    col = [flat(s, rgb(color) * k, 3) for k in (1.1, 0.95, 0.8)]
+    wh = [flat(s, c, 3) for c in ("#ddd6c8", "#c8c2b6", "#a69c8c")]
+    for x in (-0.36, 0.33):
+        for y in (-0.3, 0.27):
+            s.box(x, y, 0, 0.04, 0.04, 70, *col)
+        s.box(x, -0.3, 0, 0.04, 0.6, 4, *col)                     # sill beams
+        s.box(x, -0.3, 44, 0.04, 0.6, 4, *col)
+        s.box(x - 0.02, -0.33, -1, 0.08, 0.66, 3, *(flat(s, "#2e3336") for _ in range(3)))   # bogies
+    s.box(-0.38, -0.32, 70, 0.78, 0.64, 6, *col)                   # portal top
+    s.box(-0.08, -2.2, 82, 0.16, 3.0, 5, *wh)                      # boom, out over the water (-v)
+    for x in (-0.36, 0.33):                                        # A-frame
+        top, a = s.proj(x + 0.02, 0.1, 118), s.proj(x + 0.02, -1.6, 86)
+        s.line(top, a, rgb("#8e8897"), -0.5)
+        s.box(x, 0.08, 76, 0.04, 0.04, 42, *col)
+    s.box(-0.3, 0.2, 76, 0.6, 0.36, 18, *wh)                       # machinery house
+    tx = -1.2                                                       # trolley, cables, spreader
+    s.box(-0.1, tx, 78, 0.2, 0.18, 5, *(flat(s, "#c8a030") for _ in range(3)))
+    for dx in (-0.06, 0.06):
+        a, b = s.proj(dx, tx + 0.09, 78), s.proj(dx, tx + 0.09, 44)
+        s.line(a, b, rgb("#2e3336"), tx)
+    s.box(-0.32, tx - 0.04, 40, 0.64, 0.26, 3, *(flat(s, "#c8a030") for _ in range(3)))
+    s.outline(0.8)
+    return s
+
+
+def cargo_ship(seed, hull="#2e3a4a", rot=0):
+    """Container ship moored along u (turned by rot): a long hull with a
+    pointed bow at -u, container bays on deck, the bridge and funnel aft."""
+    s = Sprite(420, 240, 210, 150, seed)
+    s.rot = rot
+    rng = np.random.default_rng(seed)
+    L, W, H = 3.6, 0.72, 14
+    x0, y0 = -L / 2, -W / 2
+    hc = rgb(hull)
+    band = lambda a_, b_, xs, ys: np.where((b_ > 0.75)[:, None], rgb("#ddd6c8"), hc) + (s.grain[ys, xs] - 0.5)[:, None] * 4
+    s.box(x0 + 0.5, y0, 0, L - 0.5, W, H, flat(s, "#5b5a5c"), band, band)
+    bow = (x0, 0.0, 0)                                             # bow: two slanted faces to a point
+    s.face((x0 + 0.5, y0 + W, 0), np.subtract(bow, (x0 + 0.5, y0 + W, 0)), (0, 0, H), band, light="auto")
+    s.face((x0 + 0.5, y0, 0), np.subtract(bow, (x0 + 0.5, y0, 0)), (0, 0, H), band, light="auto")
+    s.face((x0 + 0.5, y0, H), (0, W, 0), (-0.5, W / 2, 0), flat(s, "#5b5a5c"), tri=True)
+    for bay in range(6):                                            # containers: 6 bays × 2 across, 1-3 high
+        bx = x0 + 0.6 + bay * 0.4
+        for r in range(2):
+            for t in range(int(rng.integers(1, 4))):
+                container(s, bx, y0 + 0.08 + r * 0.29, H + t * CH, CONTAINER_COLS[rng.integers(len(CONTAINER_COLS))])
+    ax = x0 + L - 0.5                                               # bridge and funnel aft
+    s.box(ax, y0 + 0.06, H, 0.4, W - 0.12, 36, flat(s, "#ddd6c8"),
+          wall_shader(s, "#ddd6c8", (W - 0.12) * 71.6, 36, 3, spans(4), None, None, "plain", floor_h=12),
+          wall_shader(s, "#ddd6c8", 0.4 * 71.6, 36, 3, spans(2), None, None, "plain", floor_h=12))
+    s.box(ax - 0.02, y0 + 0.02, H + 36, 0.44, W - 0.04, 3, *(flat(s, "#c8c2b6") for _ in range(3)))
+    s.box(ax + 0.12, -0.08, H + 39, 0.16, 0.16, 16, flat(s, "#2e3336"), flat(s, "#c8402a"), flat(s, "#a8321f"))
+    s.outline(0.8)
+    return s
+
+
+def warehouse(seed, a=2.4, b=1.3, color="#8e8897"):
+    """Warehouse: ribbed metal walls, three roller doors on the +v side, a
+    low barrel roof and a clerestory."""
+    s = Sprite(360, 260, 180, 170, seed)
+    x0, y0, h = -a / 2, -b / 2, 34
+    c = rgb(color)
+
+    def front(a_, b_, xs, ys):
+        out = ribs(s, color)(a_, b_, xs, ys)
+        along, z = a_ * a * 71.6, b_ * h
+        for k in range(3):
+            d0 = (k + 0.5) / 3 * a * 71.6 - 11
+            door = (along >= d0) & (along < d0 + 22) & (z < 24)
+            slats = np.mod(z, 2) < 1
+            out = np.where(door[:, None], np.where(slats[:, None], rgb("#bdb3a2"), rgb("#a69c8c")), out)
+        return out
+    s.box(x0, y0, 0, a, b, h, flat(s, c), front, ribs(s, color))
+    for k in range(8):                                             # barrel roof, in strips
+        t0, t1 = k / 8, (k + 1) / 8
+        z0, z1 = h + 10 * math.sin(math.pi * t0), h + 10 * math.sin(math.pi * t1)
+        s.face((x0, y0 + b * t0, z0), (a, 0, 0), (0, b / 8, z1 - z0), flat(s, rgb("#9c9ea8") * (0.85 + 0.2 * (1 - t0)), 4))
+    s.outline(0.75)
+    return s, (a, b)
+
+
+def customs(seed):
+    """Customs house: two stone floors, CUSTOMS over the door, flags."""
+    s = Sprite(360, 300, 180, 210, seed)
+    a, b, fh, floors = 2.0, 1.3, 32, 2
+    x0, y0 = -a / 2, -b / 2
+    hgt = floors * fh + 4
+    civic_walls(s, x0, y0, a, b, hgt, floors, fh, "#d8d0c0", "plain", spans(7, skip=(3,)), spans(4), (0.43, 0.57),
+                "arched", "#8e8680", None)
+    cornice(s, x0, y0, a, b, hgt, "#e0d8c8")
+    flat_roof(s, x0, y0, a, b, hgt + 1, "#5b5a5c", units=2)
+    wall_sign(s, x0 + a * 0.5, y0 + b, 36, 0.62, "CUSTOMS", "#2c3548", "#e8e0cc", 12)
+    s.box(x0 + a * 0.4, y0 + b, 0, a * 0.2, 0.2, 3, *(flat(s, c) for c in ("#e0d8c8", "#c9bfae", "#b3a998")))
+    for fx in (x0 + 0.1, x0 + a - 0.1):
+        flagpole(s, fx, y0 + b + 0.12, 70)
+    s.outline(0.7)
+    return s, (a, b)
+
+
+# ---------- industry ----------
+
+def sawtooth_factory(seed, a=3.4, b=1.8, floors=2):
+    """Old brick factory (after the Ford plants): long brick walls with tall
+    arched windows, a sawtooth roof of north lights, a stair tower."""
+    s = Sprite(460, 340, 230, 230, seed)
+    fh = 34
+    hgt = floors * fh + 4
+    x0, y0 = -a / 2, -b / 2
+    civic_walls(s, x0, y0, a, b, hgt, floors, fh, "#8a4a3e", "brick", spans(12), spans(6), (0.47, 0.53),
+                "arched", "#e0d8c8", None)
+    cornice(s, x0, y0, a, b, hgt, "#bdb3a2")
+    n = 6
+    for k in range(n):                                              # sawtooth: glazed steep side, slate slope
+        sx = x0 + k * a / n
+        s.face((sx, y0, hgt), (0, b, 0), (0, 0, 16), lambda a_, b_, xs, ys: np.array(GLASS)[(xs + ys) % 4] * 1.1, light=0.9)
+        s.face((sx, y0, hgt + 16), (0, b, 0), (a / n, 0, -16), flat(s, "#5b5a5c", 4), light=1.0)
+        s.face((sx, y0 + b, hgt), (a / n, 0, 0), (0, 0, 16), flat(s, "#8a4a3e", 6), tri=True, light=LIGHT["v"])
+    s.box(x0 + a - 0.45, y0 + b - 0.4, 0, 0.4, 0.4, hgt + 30, flat(s, "#6e3a30"),
+          wall_shader(s, "#8a4a3e", 0.4 * 71.6, hgt + 30, 3, spans(1), None, None, "brick", floor_h=30),
+          wall_shader(s, "#8a4a3e", 0.4 * 71.6, hgt + 30, 3, spans(1), None, None, "brick", floor_h=30))
+    s.outline(0.7)
+    return s, (a, b)
+
+
+def tank(s, x, y, r, h, color="#d8d4dc", top="#bdb3a2", z0=0):
+    ring(s, r, z0, h, lambda k: banded(s, [rgb(color), rgb(color) * 0.94], 5, axis=1), n=16, cx=x, cy=y)
+    disk(s, r, z0 + h, flat(s, top, 4), n=16, cx=x, cy=y)
+    ring(s, r + 0.01, z0 + h - 2, 2, lambda k: flat(s, rgb(color) * 0.8, 2), n=16, cx=x, cy=y)
+
+
+def pipe(s, p, q, w=0.03, color="#8e8897"):
+    """A straight pipe between two points (axis-aligned runs)."""
+    (x0, y0, z0), (x1, y1, z1) = p, q
+    col = [flat(s, rgb(color) * k, 3) for k in (1.1, 0.95, 0.8)]
+    s.box(min(x0, x1) - w / 2, min(y0, y1) - w / 2, min(z0, z1), abs(x1 - x0) + w, abs(y1 - y0) + w,
+          max(abs(z1 - z0), w * 64), *col)
+
+
+def conveyor(s, p, q, w=0.1, boxes="#c8a030"):
+    """An inclined belt on trestles from p up to q, with loads on it."""
+    band = lambda a_, b_, xs, ys: np.where((np.mod(a_ * 20, 1) < 0.15)[:, None], rgb("#2e3336"), rgb("#4a494b"))
+    e1 = np.subtract(q, p)
+    s.face(p, e1, (0, w, 0), band, light=1.0)
+    s.face((p[0], p[1] + w, p[2] - 2), e1, (0, 0, 2), flat(s, "#716f74", 2), light=LIGHT["v"])
+    for t in (0.2, 0.45, 0.7, 0.95):
+        x, y, z = p[0] + e1[0] * t, p[1] + e1[1] * t, p[2] + e1[2] * t
+        s.box(x - 0.01, y + w / 2 - 0.01, 0, 0.02, 0.02, max(1, z - 1), *(flat(s, c, 2) for c in STEEL))
+        s.box(x + 0.02, y + 0.02, z, 0.06, w - 0.04, 4, *(flat(s, rgb(boxes) * k, 3) for k in (1.1, 0.95, 0.8)))
+
+
+def plant(seed, kind="plant", a=2.4, b=1.5):
+    """Factory hall with tanks, pipes and conveyor belts. kind: 'plant'
+    (gray process plant), 'cola' (white and red, COLA and a bottle),
+    'chips' (yellow, CHIPS and a bag)."""
+    s = Sprite(460, 340, 230, 230, seed)
+    rng = np.random.default_rng(seed)
+    wall = {"plant": "#9c9ea8", "cola": "#e8e4dc", "chips": "#e8c060"}[kind]
+    x0, y0, h = -a / 2, -b / 2, 44
+
+    def front(a_, b_, xs, ys):
+        out = ribs(s, wall, 3)(a_, b_, xs, ys)
+        z = b_ * h
+        if kind == "cola":
+            out = np.where(((z > 30) & (z < 36))[:, None], rgb("#b0341f"), out)
+        if kind == "chips":
+            out = np.where(((z > 30) & (z < 36))[:, None], rgb("#c8502a"), out)
+        along = a_ * a * 71.6
+        door = (np.abs(along - a * 71.6 * 0.3) < 12) & (z < 26)
+        return np.where(door[:, None], np.where((np.mod(z, 2) < 1)[:, None], rgb("#bdb3a2"), rgb("#a69c8c")), out)
+    s.box(x0, y0, 0, a, b, h, flat(s, "#7a7c86"), front, ribs(s, wall, 3))
+    for k in range(3):                                              # roof vents
+        s.box(x0 + 0.3 + k * 0.7, y0 + 0.3, h, 0.2, 0.2, 8, fan_top(s), flat(s, "#9791a2"), flat(s, "#716f74"))
+    tc = {"plant": "#d8d4dc", "cola": "#e8e4dc", "chips": "#e0d8c8"}[kind]
+    for k, ty in enumerate((y0 + 0.28, y0 + 0.78)):                 # tanks on the +u side, piped in
+        tx = x0 + a + 0.34
+        tank(s, tx, ty, 0.26, 58 - 10 * k, tc, "#bdb3a2")
+        pipe(s, (x0 + a, ty, 30), (tx - 0.26, ty, 30), color="#8e8897")
+        pipe(s, (tx, ty, 58 - 10 * k), (tx, ty, 66 - 10 * k), color="#8e8897")
+    pipe(s, (x0 + a - 0.05, y0 + 0.05, h), (x0 + a - 0.05, y0 + 0.05, h + 26), w=0.06)   # vent stack
+    if kind == "cola":
+        s.box(x0 + a + 0.08, y0 + 0.28 - 0.02, 20, 0.52, 0.04, 8, *(flat(s, "#b0341f") for _ in range(3)))
+    conveyor(s, (x0 + 0.2, y0 + b + 0.05, 2), (x0 + 1.2, y0 + b + 0.05, h - 6),
+             boxes={"plant": "#b08a5a", "cola": "#b0341f", "chips": "#e0a040"}[kind])
+    if kind in ("cola", "chips"):
+        tex = {"cola": bottle_tex(), "chips": bag_tex()}[kind]
+        roof_board(s, x0, y0, a, b, h, kind.upper(), "#b0341f" if kind == "cola" else "#c8502a", "#f0ece4",
+                   w=1.1, tex=tex, tex_w=0.3, tex_h=26)
+    s.outline(0.7)
+    return s, (a, b)
+
+
+def bottle_tex(W=16, H=26):
+    t = np.zeros((H, W, 4))
+    cx = W // 2
+    for y in range(H):
+        w = 2 if y < 6 else 3 if y < 9 else 5
+        t[y, cx - w:cx + w] = [*rgb("#3a1e14"), 255]
+        if 13 < y < 18:
+            t[y, cx - w:cx + w] = [*rgb("#f0ece4"), 255]
+    t[0:2, cx - 2:cx + 2] = [*rgb("#c8402a"), 255]
+    t[8:, cx + 2:cx + 3] = [*rgb("#8a5a3a"), 255]
+    return t
+
+
+def bag_tex(W=18, H=26):
+    t = np.zeros((H, W, 4))
+    t[2:H - 1, 1:W - 1] = [*rgb("#c8502a"), 255]
+    for x in range(1, W - 1):
+        t[0:2 + (x % 2), x] = 0
+        t[H - 1 - (x % 2):, x] = 0
+    t[9:16, 1:W - 1] = [*rgb("#f0d890"), 255]
+    for cx, cy in ((6, 12), (11, 13)):
+        t[cy - 1:cy + 2, cx - 2:cx + 2] = [*rgb("#e0a040"), 255]
+    return t
+
+
+def chimney(seed, p, h=120):
+    """Tall brick factory chimney at phase p: smoke puffs rise from its top,
+    drift off and thin out."""
+    s = Sprite(160, 260, 50, 220, seed)
+    for z in range(0, h, 6):                                        # tapering round stack in brick courses
+        r = 0.16 - 0.06 * z / h
+        ring(s, r, z, 6, lambda k, z=z: flat(s, rgb("#8a4a3e") * (1.0 if (z // 6) % 2 else 0.92), 5), n=12)
+    ring(s, 0.11, h, 5, lambda k: flat(s, "#5b3a30", 3), n=12)
+    disk(s, 0.1, h + 5, flat(s, "#1e1e22", 2), n=12)
+    rng = np.random.default_rng(seed)
+    grey = ramp("#8e8897", "#a8a4b0", "#c8c4cc", "#e0dce4")
+    for k in range(7):                                              # puffs, each at its own age
+        age = (p + k / 7) % 1
+        up = age * 90
+        drift = age * 1.1 + 0.08 * math.sin(age * 9 + k)
+        r = 4 + 9 * age
+        if age > 0.85:                                              # thinning out: smaller at the end
+            r *= (1 - age) / 0.15
+        if r > 1:
+            s.blob((drift, -drift * 0.4, h + 8 + up), r, grey, squash=0.85, shade=0.15)
+    return s
+
+
+def truck(seed, color="#c8402a", rot=0):
+    """Semi-truck: a cab at +u and a box trailer, along u (turned by rot)."""
+    s = Sprite(140, 90, 70, 60, seed)
+    s.rot = rot
+    c = rgb(color)
+    tr = [flat(s, c, 3) for c in ("#e8e4dc", "#d8d4cc", "#bdb3a2")]
+    s.box(-0.5, -0.12, 3, 0.78, 0.24, 17, *tr)                      # trailer
+    s.box(-0.5, -0.12, 20, 0.78, 0.24, 1, *(flat(s, "#bdb3a2") for _ in range(3)))
+    def cab(a_, b_, xs, ys):
+        return np.where(((b_ > 0.55) & (a_ > 0.1) & (a_ < 0.9))[:, None], np.array(GLASS)[1], c)
+    s.box(0.3, -0.12, 2, 0.22, 0.24, 14, flat(s, c * 1.1), cab, cab)
+    if rot:
+        s.face((0.3, -0.12, 2), (0.22, 0, 0), (0, 0, 14), cab, light="auto")
+        s.face((0.3, -0.12, 2), (0, 0.24, 0), (0, 0, 14), cab, light="auto")
+        s.face((-0.5, -0.12, 3), (0.78, 0, 0), (0, 0, 17), tr[1], light="auto")
+        s.face((-0.5, -0.12, 3), (0, 0.24, 0), (0, 0, 17), tr[2], light="auto")
+    for x in (-0.42, -0.3, 0.1, 0.4):
+        for y in (-0.13, 0.11):
+            s.box(x, y, 0, 0.07, 0.02, 4, *(flat(s, "#1e1e22") for _ in range(3)))
+    s.outline(0.8)
+    return s
+
+
+def workshop(seed, color="#8e8897"):
+    """Workshop: a small ribbed shed with two roller doors and a GARAGE board."""
+    s = Sprite(220, 180, 110, 120, seed)
+    a, b, h = 1.4, 1.0, 28
+    x0, y0 = -a / 2, -b / 2
+
+    def front(a_, b_, xs, ys):
+        out = ribs(s, color)(a_, b_, xs, ys)
+        along, z = a_ * a * 71.6, b_ * h
+        for d0 in (a * 71.6 * 0.12, a * 71.6 * 0.55):
+            door = (along >= d0) & (along < d0 + 30) & (z < 22)
+            out = np.where(door[:, None], np.where((np.mod(z, 2) < 1)[:, None], rgb("#c8c2b6"), rgb("#a69c8c")), out)
+        return out
+    s.box(x0, y0, 0, a, b, h, flat(s, "#7a7c86"), front, ribs(s, color))
+    gable(s, x0, y0, a, b, h, 10, ramp("#6e6e74", "#7a7a80"), color, "u", 0.04)
+    wall_sign(s, x0 + a * 0.5, y0 + b, 24, 0.6, "GARAGE", "#c8a030", "#2e3336", 9)
+    for k in range(3):                                              # oil drums by the door
+        s.box(x0 + a + 0.06, y0 + b - 0.2 - k * 0.12, 0, 0.09, 0.09, 10, *(flat(s, c) for c in ("#3a5a9a", "#2f5a88", "#244870")))
+    s.outline(0.75)
+    return s, (a, b)
+
+
+def water_tower(seed):
+    """Water tower: a round tank with a conical cap on four braced legs."""
+    s = Sprite(140, 220, 70, 190, seed)
+    steel = [flat(s, c, 3) for c in ("#8e8897", "#716f74", "#5b5a5c")]
+    for x, y in ((-0.22, -0.22), (0.2, -0.22), (0.2, 0.2), (-0.22, 0.2)):
+        s.box(x, y, 0, 0.03, 0.03, 80, *steel)
+    for z in (26, 54):
+        for (ax, ay), (bx, by) in (((-0.21, 0.21), (0.21, 0.21)), ((0.21, -0.21), (0.21, 0.21))):
+            p, q = s.proj(ax, ay, z), s.proj(bx, by, z)
+            s.line(p, q, rgb("#716f74"), 0.2)
+    tank(s, 0, 0, 0.32, 36, "#b8c4cc", "#8e98a0", z0=80)
+    for k in range(6):                                              # cone
+        ring(s, 0.32 - k * 0.05, 116 + k * 3, 3, lambda i: flat(s, "#8e98a0", 3), n=16)
+    s.outline(0.78)
+    return s
+
+
+def cell_tower(seed):
+    """Cell tower: a slim lattice mast with antenna panels and dishes."""
+    s = Sprite(120, 260, 60, 235, seed)
+    steel = [flat(s, c, 2) for c in ("#c8c2b6", "#a69c8c", "#8e8680")]
+    for x, y in ((-0.08, -0.08), (0.06, -0.08), (0.06, 0.06), (-0.08, 0.06)):
+        s.box(x, y, 0, 0.02, 0.02, 180, *steel)
+    for z in range(10, 180, 14):
+        p, q = s.proj(-0.07, 0.07, z), s.proj(0.07, 0.07, z + 14)
+        s.line(p, q, rgb("#a69c8c"), 0.2)
+    for k, (dx, dy) in enumerate(((0.12, 0), (0, 0.12), (-0.12, 0), (0, -0.12))):   # antenna panels
+        s.box(dx - 0.02, dy - 0.02, 160, 0.04, 0.04, 16, *(flat(s, "#e8e4dc") for _ in range(3)))
+    s.blob((0.1, 0.1, 140), 4, ramp("#9a9488", "#c8c2b6", "#e8e2d6"), squash=0.6)
+    s.blob((0, 0, 184), 1.5, ramp("#8a2a20", "#c8402a", "#f07050"))
+    s.outline(0.8)
+    return s
+
+
+def dish_antenna(seed):
+    """Big parabolic antenna on a pedestal, tilted up toward the sky."""
+    s = Sprite(160, 170, 80, 130, seed)
+    s.box(-0.16, -0.16, 0, 0.32, 0.32, 18, *(flat(s, c) for c in ("#c8c2b6", "#a69c8c", "#8e8680")))
+    s.box(-0.05, -0.05, 18, 0.1, 0.1, 22, *(flat(s, c) for c in STEEL))
+    cx, cy = s.proj(0, 0.05, 62)
+    ys, xs = np.mgrid[0:s.h, 0:s.w]
+    d = ((xs + 0.5 - cx) / 26) ** 2 + ((ys + 0.5 - cy) / 18) ** 2
+    inside = d <= 1
+    col = np.array([*rgb("#e8e4dc")])[None] * (0.8 + 0.25 * (1 - d[inside]))[:, None]
+    s._write(np.ones(inside.sum(), bool), ys[inside], xs[inside], np.full(inside.sum(), 0.4), col)
+    rim = (d > 0.86) & (d <= 1)
+    s._write(np.ones(rim.sum(), bool), ys[rim], xs[rim], np.full(rim.sum(), 0.41), np.repeat(rgb("#a69c8c")[None], rim.sum(), 0))
+    s.line((cx, cy), (cx + 6, cy - 16), rgb("#5b5a5c"), 0.5)       # feed arm
+    s.blob((0, 0.05, 40), 3, ramp("#5b5a5c", "#716f74", "#8e8897"))
+    s.outline(0.8)
+    return s
+
+
+def barrels(seed):
+    """A cluster of oil drums, some blue, some yellow, one on its side."""
+    s = Sprite(90, 60, 45, 42, seed)
+    rng = np.random.default_rng(seed)
+    for x, y in ((-0.1, -0.08), (0.02, -0.08), (-0.04, 0.04), (0.1, 0.02)):
+        col = ["#3a5a9a", "#c8a030", "#3a5a9a", "#8a3a32"][rng.integers(4)]
+        c = rgb(col)
+        ring(s, 0.055, 0, 11, lambda k: banded(s, [c, c * 0.8], 4, axis=1), n=10, cx=x, cy=y)
+        disk(s, 0.055, 11, flat(s, c * 1.1, 3), n=10, cx=x, cy=y)
+    s.outline(0.8)
+    return s
+
+
+def power_station(seed):
+    """Electrical substation: transformers with fins and insulators, a steel
+    gantry with lines, all inside a chain-link fence (about 2 × 1.6 tiles)."""
+    s = Sprite(320, 220, 160, 150, seed)
+    a, b = 2.0, 1.6
+    x0, y0 = -a / 2, -b / 2
+    s.face((x0, y0, 0.3), (a, 0, 0), (0, b, 0), lambda a_, b_, xs, ys: np.repeat(rgb("#8e8680")[None], len(a_), 0)
+           + (s.grain[ys, xs] - 0.5)[:, None] * 12)                 # gravel
+    for k in range(3):                                              # transformers
+        tx = x0 + 0.3 + k * 0.55
+        s.box(tx, y0 + 0.5, 0, 0.36, 0.3, 20, *(flat(s, c) for c in ("#7a8a7a", "#6a7a6a", "#5a6a5a")))
+        for f in range(4):
+            s.box(tx + 0.36, y0 + 0.52 + f * 0.07, 2, 0.05, 0.02, 16, *(flat(s, "#5a6a5a") for _ in range(3)))
+        for ix in (0.08, 0.18, 0.28):
+            s.box(tx + ix, y0 + 0.62, 20, 0.02, 0.02, 10, *(flat(s, "#c8b8a0") for _ in range(3)))
+            s.blob((tx + ix + 0.01, y0 + 0.63, 31), 1.5, ramp("#8a6a4a", "#c8b8a0", "#e8e2d6"))
+    steel = [flat(s, c, 2) for c in STEEL]
+    for x in (x0 + 0.15, x0 + a - 0.2):                             # gantry
+        s.box(x, y0 + 0.2, 0, 0.04, 0.04, 56, *steel)
+        s.box(x, y0 + 1.2, 0, 0.04, 0.04, 56, *steel)
+    s.box(x0 + 0.15, y0 + 0.2, 56, a - 0.31, 0.04, 3, *steel)
+    s.box(x0 + 0.15, y0 + 1.2, 56, a - 0.31, 0.04, 3, *steel)
+    for k in range(3):
+        p, q = s.proj(x0 + 0.48 + k * 0.55, y0 + 0.22, 56), s.proj(x0 + 0.48 + k * 0.55, y0 + 0.63, 31)
+        s.line(p, q, rgb("#2e3336"), 0.1)
+    fence = lambda a_, b_, xs, ys: np.where(((xs + ys) % 3 == 0) | ((xs - ys) % 3 == 0) | (b_ > 0.9), 1, 0)[:, None] * \
+        np.concatenate([np.repeat(rgb("#a69c8c")[None], len(a_), 0), np.full((len(a_), 1), 255.0)], 1)
+    for o, e in (((x0, y0 + b, 0), (a, 0, 0)), ((x0 + a, y0, 0), (0, b, 0)), ((x0, y0, 0), (a, 0, 0)), ((x0, y0, 0), (0, b, 0))):
+        s.face(o, e, (0, 0, 16), fence, light=1.0)
+    s.outline(0.85)
+    return s, (a, b)
+
+
+# ---------- nuclear power plant ----------
+
+def cooling_tower(seed, p, R=1.15, H=170):
+    """Hyperbolic cooling tower (radius R tiles at the base, H px tall) at
+    phase p: white steam billows from its mouth and drifts off."""
+    s = Sprite(420, 460, 210, 400, seed)
+    for z in range(0, H, 5):                                   # the waist narrows then flares at the top
+        t = z / H
+        r = R * (0.62 + 0.38 * ((t - 0.72) / 0.72) ** 2)
+        shade = 1.0 if (z // 5) % 2 else 0.96
+        ring(s, r, z, 6, lambda k, shade=shade: flat(s, rgb("#d8d4cc") * shade, 4), n=28)
+    rt = R * 0.72
+    ring(s, rt + 0.01, H - 3, 4, lambda k: flat(s, "#bdb3a2", 3), n=28)
+    disk(s, rt, H, flat(s, "#4a494b", 2), n=28)
+    for k in range(6):                                         # legs round the base
+        a = 2 * math.pi * k / 6
+        s.box(R * 0.98 * math.cos(a) - 0.03, R * 0.98 * math.sin(a) - 0.03, 0, 0.06, 0.06, 10,
+              *(flat(s, c) for c in ("#bdb3a2", "#a69c8c", "#8e8680")))
+    steam = ramp("#c8c4cc", "#dcd8e0", "#ecebf0", "#f8f8fa")
+    for k in range(9):
+        age = (p + k / 9) % 1
+        up, drift = age * 150, age * 1.6
+        r = 14 + 26 * age
+        if age > 0.8:
+            r *= (1 - age) / 0.2
+        ang = k * 2.1
+        if r > 2:
+            s.blob((drift + 0.2 * math.cos(ang), -drift * 0.5 + 0.2 * math.sin(ang), H + 8 + up), r, steam, squash=0.8, shade=0.25)
+    return s
+
+
+def reactor(seed):
+    """Containment building: a round concrete drum under a dome, a small
+    annex and a vent stack beside it."""
+    s = Sprite(260, 300, 130, 230, seed)
+    R, H = 0.95, 70
+    ring(s, R, 0, H, lambda k: banded(s, [rgb("#d8d0c0"), rgb("#ccc4b4")], 7, axis=1), n=28)
+    for k in range(10):                                        # dome
+        t0 = k / 10
+        r = R * math.cos(t0 * math.pi / 2)
+        ring(s, max(r, 0.05), H + math.sin(t0 * math.pi / 2) * 46, 5, lambda i: flat(s, "#e0d8c8", 3), n=28)
+    s.blob((0, 0, H + 48), 5, ramp("#c8c2b6", "#e0d8c8", "#f0ece4"), squash=0.6)
+    s.box(-0.3, R - 0.1, 0, 0.6, 0.35, 30, flat(s, "#bdb3a2"),
+          wall_shader(s, "#d8d0c0", 0.6 * 71.6, 30, 2, spans(3), (0.4, 0.6), None, "plain"),
+          wall_shader(s, "#d8d0c0", 0.35 * 71.6, 30, 2, spans(1), None, None, "plain"))
+    for z in range(0, 110, 5):                                 # vent stack
+        ring(s, 0.09, z, 5, lambda k, z=z: flat(s, "#e0d8c8" if (z // 20) % 2 else "#c8402a", 3), n=10, cx=R + 0.25, cy=-0.3)
+    s.outline(0.72)
+    return s, (2 * R, 2 * R)
+
+
+def atom_tex(W=64, H=40):
+    """Sign face: a classic atom (three orbits round a nucleus, electrons)
+    over NUCLEAR, dark blue on white with a blue border."""
+    t = np.zeros((H, W, 3))
+    t[:] = rgb("#f0f2f4")
+    ys, xs = np.mgrid[0:H, 0:W]
+    cx, cy, A, B = W / 2 - 0.5, 14.5, 17, 6
+    ink = np.zeros((H, W), bool)
+    for k, ang in enumerate((0, 60, 120)):
+        a = math.radians(ang)
+        for step in range(360):
+            q = math.radians(step)
+            x, y = A * math.cos(q), B * math.sin(q)
+            px, py = cx + x * math.cos(a) - y * math.sin(a), cy + x * math.sin(a) * 0.75 + y * math.cos(a) * 0.75
+            ix, iy = int(round(px)), int(round(py))
+            if 0 <= ix < W and 0 <= iy < H:
+                ink[iy, ix] = True
+        q = math.radians(40 + 110 * k)                        # an electron on each orbit
+        x, y = A * math.cos(q), B * math.sin(q)
+        ex, ey = cx + x * math.cos(a) - y * math.sin(a), cy + x * math.sin(a) * 0.75 + y * math.cos(a) * 0.75
+        t[(np.hypot(xs - ex, ys - ey) < 1.8)] = rgb("#3a8ac8")
+    t[ink] = rgb("#1e3a6a")
+    t[np.hypot(xs - cx, ys - cy) < 3] = rgb("#c8402a")        # nucleus
+    bits = text_bits("NUCLEAR")
+    bx, by = (W - bits.shape[1]) // 2, H - 10
+    t[by:by + 7, bx:bx + bits.shape[1]][bits] = rgb("#1e3a6a")
+    edge = (xs == 0) | (xs == W - 1) | (ys == 0) | (ys == H - 1)
+    t[edge] = rgb("#3a6ab0")
+    return t
+
+
+def atom_sign(seed):
+    """The plant's entrance sign: the atom board on two posts on a low
+    stone base, facing +v."""
+    s = Sprite(140, 130, 70, 100, seed)
+    w, z0, h = 1.0, 12, 40
+    s.box(-w / 2 - 0.05, -0.08, 0, w + 0.1, 0.16, 5, *(flat(s, c) for c in ("#d8d0c0", "#bdb3a2", "#a69c8c")))
+    for x in (-w / 2 + 0.05, w / 2 - 0.08):
+        s.box(x, -0.02, 5, 0.03, 0.03, z0, *(flat(s, c, 2) for c in STEEL))
+    face = texture(s, atom_tex(int(w * HW), h))
+    s.box(-w / 2, -0.03, z0 + 5, w, 0.06, h, flat(s, "#3a6ab0"), face, flat(s, "#3a6ab0"))
+    s.outline(0.8)
+    return s
+
+
+def turbine_hall(seed, a=3.0, b=1.4):
+    """Turbine hall: a tall ribbed shed with a band of high windows and a
+    POWER board."""
+    s = Sprite(420, 300, 210, 200, seed)
+    x0, y0, h = -a / 2, -b / 2, 52
+
+    def wall(length):
+        def sh(a_, b_, xs, ys):
+            out = ribs(s, "#b8c4cc", 3)(a_, b_, xs, ys)
+            z = b_ * h
+            win = (z > 36) & (z < 46)
+            return np.where(win[:, None], np.array(GLASS_BLUE)[(xs + ys) % 4] * 1.1, out)
+        return sh
+    s.box(x0, y0, 0, a, b, h, flat(s, "#8e98a0"), wall(a), wall(b))
+    s.box(x0 - 0.03, y0 - 0.03, h, a + 0.06, b + 0.06, 3, *(flat(s, c) for c in ("#7a8a96", "#6a7a86", "#5a6a76")))
+    roof_board(s, x0, y0, a, b, h, "POWER", "#2c3548", "#f2c06a", w=1.0)
+    s.outline(0.72)
+    return s, (a, b)
+
+
 # ---------- recreation ----------
 
 REC_WOOD = ("#8a6751", "#765743", "#5f4646")
@@ -3133,6 +3673,45 @@ def main():
         save(trash_can(175, kind), f"street/bin-{kind}.png")
     save(statue(176, "figure"), "street/statue.png")
     save(statue(177, "obelisk"), "street/obelisk.png")
+    # Port.
+    turn = lambda k: "" if k == 0 else f"-r{k}"
+    for k in range(2):
+        for name, (rows, tiers, cols) in (("a", (2, 3, 1)), ("b", (3, 2, 1)), ("c", (2, 2, 2))):
+            save(container_stack(200 + ord(name), rows, tiers, cols, k), f"port/stack-{name}{turn(k)}.png")
+        save(cargo_ship(210, "#2e3a4a", k), f"port/ship-a{turn(k)}.png")
+        save(cargo_ship(211, "#6a2a24", k), f"port/ship-b{turn(k)}.png")
+    for k in range(4):
+        save(gantry_crane(212, k), f"port/crane{turn(k)}.png")
+    for name, (a, b, col) in (("a", (2.4, 1.3, "#8e8897")), ("b", (2.0, 1.2, "#7a8a9a"))):
+        spr, (fa, fb) = warehouse(213 + ord(name), a, b, col)
+        save(spr, f"port/warehouse-{name}.png", footprint=[fa, fb])
+    spr, (fa, fb) = customs(215)
+    save(spr, "civic/customs.png", footprint=[fa, fb], group="civic", unique="district")
+    # Industry.
+    spr, (fa, fb) = sawtooth_factory(220)
+    save(spr, "industry/brick-factory.png", footprint=[fa, fb])
+    for kind, seed in (("plant", 221), ("cola", 222), ("chips", 223)):
+        spr, (fa, fb) = plant(seed, kind)
+        save(spr, f"industry/{kind}.png", footprint=[fa, fb])
+    save_anim([chimney(224, f / 16) for f in range(16)], "industry/chimney.png", footprint=[0.3, 0.3])
+    for k in range(4):
+        save(truck(225, "#c8402a", k), f"industry/truck-red{turn(k)}.png")
+        save(truck(226, "#3a5a9a", k), f"industry/truck-blue{turn(k)}.png")
+    spr, (fa, fb) = workshop(227)
+    save(spr, "industry/workshop.png", footprint=[fa, fb])
+    save(water_tower(228), "industry/water-tower.png")
+    save(cell_tower(229), "industry/cell-tower.png")
+    save(dish_antenna(230), "industry/dish.png")
+    save(barrels(231), "industry/barrels.png")
+    spr, (fa, fb) = power_station(232)
+    save(spr, "industry/power-station.png", footprint=[fa, fb])
+    # Nuclear power plant.
+    save_anim([cooling_tower(240, f / 16) for f in range(16)], "nuclear/cooling-tower.png", footprint=[2.3, 2.3])
+    spr, (fa, fb) = reactor(241)
+    save(spr, "nuclear/reactor.png", footprint=[fa, fb])
+    spr, (fa, fb) = turbine_hall(242)
+    save(spr, "nuclear/turbine-hall.png", footprint=[fa, fb])
+    save(atom_sign(243), "nuclear/sign.png")
     # Plaza shops.
     for fn, name, seed in ((pizza_place, "pizza", 190), (bistro, "bistro", 191), (cake_shop, "cakes", 192),
                            (toy_shop, "toys", 193), (bakery, "bakery", 198)):

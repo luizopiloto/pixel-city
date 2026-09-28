@@ -90,7 +90,7 @@
   // downtown, a BBQ area or a playground in suburbs).
   const DOWNTOWN_SQUARES = [3, 5], SUBURB_PER_SQUARE = 25;
   // Districts attached to downtown's sides: [type, min cells, max cells].
-  const DISTRICTS = { suburb: [40, 60], park: [22, 36], plaza: [22, 32] };
+  const DISTRICTS = { suburb: [40, 60], park: [22, 36], plaza: [22, 32], port: [18, 26], industrial: [32, 46] };
   // Civic landmarks each district type may get: at most one of each per
   // district (the manifest tags them unique: "district").
   const CIVIC = {
@@ -98,6 +98,9 @@
     suburb: ['school', 'church', 'post-office', 'fire-station'],
     plaza: ['post-office', 'bank', 'police'],
     park: [],
+    port: ['customs'],
+    industrial: ['fire-station', 'police'],
+    nuclear: [],
   };
   const HOUSES = [1, 2, 3, 4, 5, 6].map(n => `houses/house-${n}.png`);
   // Plaza fronts: every plaza district gets one of each PLAZA_MUST, then
@@ -147,7 +150,7 @@
   // NPCs roam: each drives an endless random walk over the road lattice.
   // Streets are picked, and cars spawned, by the weight of the blocks beside
   // them, so suburbs get about a third of downtown's traffic.
-  const TRAFFIC = { downtown: 1, plaza: 1, park: 0.5, suburb: 0.28 };
+  const TRAFFIC = { downtown: 1, plaza: 1, park: 0.5, suburb: 0.28, industrial: 0.45, port: 0.35, nuclear: 0.25 };
   const TILES_PER_CAR = 38;  // lane tiles per car at weight 1
   const WALK_EDGES = 24;     // blocks per stretch of an NPC's walk
   const LANE = 0.23;         // lane offset from the road center line
@@ -226,7 +229,9 @@
       const g = [], n = GRID / 6 + 2;
       for (let a = 0; a < n; a++) { g.push([]); for (let b = 0; b < n; b++) g[a].push(rng()); }
       return (ci, cj) => {
-        const x = ci / 6, y = cj / 6, x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+        const lim = n - 1.001;                        // clamped: bigger islands reach past the grid
+        const x = Math.min(lim, Math.max(0, ci / 6)), y = Math.min(lim, Math.max(0, cj / 6));
+        const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
         const top = g[x0][y0] * (1 - fx) + g[x0 + 1][y0] * fx;
         const bot = g[x0][y0 + 1] * (1 - fx) + g[x0 + 1][y0 + 1] * fx;
         return top * (1 - fy) + bot * fy;
@@ -254,11 +259,14 @@
     // Districts: blobs grown outward from downtown's sides, each from a
     // seed cell on the outline facing its direction.
     const center = GRID >> 1;
-    const kinds = shuffle(['suburb', 'park', 'plaza', ...(rng() < 0.6 ? ['suburb'] : [])]);
-    const sides = shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]]);
+    // The port and industry always go north (the top corner on screen, -u
+    // -v), grown first; the rest take the other sides.
+    const NORTH = ['port', 'industrial'];
+    const kinds = [...NORTH, ...shuffle(['suburb', 'park', 'plaza', ...(rng() < 0.6 ? ['suburb'] : [])])];
+    const sides = shuffle([[1, 0], [0, 1], [1, 0], [0, 1], [-1, 0.6], [0.6, -1]]);
     const districts = [{ type: 'downtown' }];
     kinds.forEach((type, k) => {
-      const [dx, dy] = sides[k % sides.length];
+      const [dx, dy] = NORTH.includes(type) ? [-1, -1] : sides[(k - NORTH.length) % sides.length];
       const id = districts.length;
       let seed = null, best = -Infinity;
       for (const c of cells.values()) for (const [di, dj] of NB4) {
@@ -301,6 +309,31 @@
         }
       }
     }
+    // Nuclear power plant: its own small district, one 4×4 block against the
+    // city's edge (most sides touching, so it sits snug on the coast).
+    let nukeCell = null;
+    {
+      const all = [...cells.values()];
+      const i0 = Math.min(...all.map(c => c.i)) - 4, i1 = Math.max(...all.map(c => c.i)) + 1;
+      const j0 = Math.min(...all.map(c => c.j)) - 4, j1 = Math.max(...all.map(c => c.j)) + 1;
+      let best = -1, at = null;
+      for (let bi = i0; bi <= i1; bi++) for (let bj = j0; bj <= j1; bj++) {
+        let free = true, touch = 0;
+        for (let a = 0; a < 4 && free; a++) for (let b = 0; b < 4 && free; b++) if (filled(bi + a, bj + b)) free = false;
+        if (!free) continue;
+        for (let t = 0; t < 4; t++) {
+          touch += filled(bi - 1, bj + t) + filled(bi + 4, bj + t) + filled(bi + t, bj - 1) + filled(bi + t, bj + 4);
+        }
+        const score = touch + rng() * 2;
+        if (touch >= 3 && score > best) { best = score; at = [bi, bj]; }
+      }
+      if (at) {
+        const id = districts.length;
+        districts.push({ type: 'nuclear' });
+        for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) fill(at[0] + a, at[1] + b, 'nuclear', id);
+        nukeCell = cells.get(key(at[0], at[1]));
+      }
+    }
     // Crop the lattice to the cells in use, plus the sea around them.
     const all = [...cells.values()];
     const mi = Math.min(...all.map(c => c.i)) - SEA_BACK, mj = Math.min(...all.map(c => c.j)) - SEA_BACK;
@@ -333,6 +366,12 @@
         placed++;
       }
     }
+    if (nukeCell) {                                  // the plant's block, merged whole
+      const { i: bi, j: bj } = nukeCell, k = supers.length;
+      for (let a = bi; a < bi + 4; a++) for (let b = bj; b < bj + 4; b++) cellAt(a, b).sup = k;
+      supers.push({ type: 'nuclear', kind: 'nuclear', district: nukeCell.district, bi, bj, bw: 4, bh: 4,
+        u0: roadAt(bi) + 1, u1: roadAt(bi + 4), v0: roadAt(bj) + 1, v1: roadAt(bj + 4) });
+    }
     merge(SUPER_COUNT, [[3, 2], [2, 3]], true);
     merge(1, [[2, 2]], true, 'downtown', -1, 'tv');
     merge(1, [[1, 2], [2, 1]], true, 'downtown', -1, 'parking');
@@ -343,6 +382,11 @@
     // Cat's: one 2×2 gas station and supermarket in the first plaza district.
     const plazaId = districts.findIndex(d => d.type === 'plaza');
     if (plazaId > 0) merge(1, [[2, 2]], true, 'plaza', plazaId, 'cats');
+    // Industry: mostly big merged blocks, a few single cells left over.
+    districts.forEach((d, id) => {
+      if (d.type === 'industrial') merge(Math.round(typed('industrial', id) / 3), [[2, 3], [3, 2], [2, 1], [1, 2]], false,
+        'industrial', id, 'factory');
+    });
     districts.forEach((d, id) => {
       if (d.type !== 'suburb') return;
       merge(Math.max(1, Math.round(typed('suburb', id) / SUBURB_PER_SQUARE)), [[2, 2]], false, 'suburb', id, 'square');
@@ -662,6 +706,130 @@
         exit: [[bi + 2, bj + 1], [bi + 2, bj]] };
     }
 
+    // Nuclear plant (15 × 15 tiles): two cooling towers and the reactor along
+    // the back, the turbine hall and substations in the middle, a staff car
+    // park at the front, a fence all round with the gate and the atom sign.
+    function nuclearBlock({ u0, u1, v0, v1 }) {
+      pave(u0, v0, u1 - u0, v1 - v0);
+      for (const cu of [u0 + 2.6, u0 + 6.0]) {
+        late.push(['art/nuclear/cooling-tower.png', cu, v0 + 2.7, [cu - 1.15, cu + 1.15, v0 + 1.55, v0 + 3.85]]);
+      }
+      artLot('nuclear/reactor.png', u0 + 11.0, v0 + 2.8);
+      artLot('nuclear/turbine-hall.png', u0 + 10.2, v0 + 7.2);
+      artLot('industry/power-station.png', u0 + 3.0, v0 + 7.3);
+      artLot('industry/power-station.png', u0 + 5.6, v0 + 7.3);
+      artProp('industry/water-tower.png', u0 + 13.6, v0 + 6.5);
+      for (let u = u0; u < u1; u++) for (let v = v0 + 10; v < v1; v++) setGround(u, v, v === v0 + 12 ? 'art/ground/lot' : 'art/ground/lot-lines-v');
+      for (let k = 0; k < 26; k++) {                  // staff cars, rows either side of the aisle
+        for (const [v, dir] of [[v0 + 11.5, 1], [v0 + 13.5, -1]]) {
+          if (rng() < 0.5) parkedCars.push({ u: u0 + 0.35 + k * 0.55, v, head: [0, rng() < 0.3 ? -dir : dir], type: pick(TYPES) });
+        }
+      }
+      const gate = Math.floor((u0 + u1) / 2);        // fence, open at the gate on the +v street
+      for (let u = u0; u < u1; u++) {
+        props.push(['art/parking/fence.png', u, v0 + 0.02, [u, u + 1, v0 + 0.02, v0 + 0.05]]);
+        if (u !== gate) props.push(['art/parking/fence.png', u, v1 - 0.06, [u, u + 1, v1 - 0.06, v1 - 0.03]]);
+      }
+      for (let v = v0; v < v1; v++) {
+        props.push(['art/parking/fence-r1.png', u0 + 0.05, v, [u0 + 0.02, u0 + 0.05, v, v + 1]]);
+        props.push(['art/parking/fence-r1.png', u1 - 0.01, v, [u1 - 0.04, u1 - 0.01, v, v + 1]]);
+      }
+      artProp('nuclear/sign.png', gate - 0.7, v1 - 0.35);
+    }
+
+    // ----- industry and port -----
+    const parkedCars = [];                         // parked cars and trucks outside the two car parks
+    const TRUCKS = ['industry/truck-red', 'industry/truck-blue'];
+    const STACKS = ['port/stack-a', 'port/stack-b', 'port/stack-c'];
+    const stack = (u, v, rot = rng() < 0.5 ? 1 : 0) => artProp(`${pick(STACKS)}${rot ? '-r1' : ''}.png`, u, v);
+    // Width a design needs along u, with what it draws on its +u side.
+    const SIDE = { 'industry/plant.png': 0.9, 'industry/cola.png': 0.9, 'industry/chips.png': 0.9 };
+    const need = n => fp(n)[0] + (SIDE[n] || 0);
+    let made = new Set();                          // the Cola and Chips factories, once each
+    function factoryName(room) {
+      const want = ['industry/cola.png', 'industry/chips.png'].filter(n => !made.has(n) && need(n) <= room);
+      if (want.length) { made.add(want[0]); return want[0]; }
+      const opts = ['industry/brick-factory.png', 'industry/plant.png', 'industry/plant.png', 'port/warehouse-a.png',
+        'port/warehouse-b.png', 'industry/workshop.png', 'industry/power-station.png'].filter(n => need(n) <= room);
+      return opts.length ? pick(opts) : null;
+    }
+    // A merged industrial block: rows of works from the back, each row's
+    // fronts facing a clear strip; chimneys behind the big ones; a truck park
+    // along the +v street on deep blocks; container stacks in the corners.
+    function factoryBlock(sb) {
+      const { u0, u1, v0, v1 } = sb, lu = u1 - u0, lv = v1 - v0;
+      pave(u0, v0, lu, lv);
+      const park = lv >= 7 ? 2.4 : 0;               // truck park depth
+      let v = v0 + 0.3;
+      while (v1 - park - v >= 1.6) {
+        let u = u0 + 0.3, rowB = 0;
+        for (;;) {
+          const name = factoryName(u1 - 0.3 - u);
+          if (!name) break;
+          const [a, b] = fp(name);
+          if (v + b > v1 - park - 0.5) break;
+          artLot(name, u + a / 2, v + b / 2, sb.district);
+          if (/brick-factory|plant|cola|chips/.test(name) && v - v0 < 0.5) {   // chimney behind
+            late.push(['art/industry/chimney.png', u + a - 0.35, v - 0.12, pointBox(u + a - 0.35, v - 0.12)]);
+          }
+          rowB = Math.max(rowB, b);
+          u += need(name) + 0.35;
+        }
+        if (!rowB) break;
+        v += rowB + 1.0;                              // the next row, past this one's doorways
+      }
+      if (park) {                                     // truck park: lined asphalt, trucks nose to the street
+        for (let uu = u0; uu < u1; uu++) for (let vv = Math.ceil(v1 - park); vv < v1; vv++) setGround(uu, vv, 'art/ground/lot-lines-v');
+        for (let x = u0 + 0.45; x < u1 - 0.4; x += 0.55) {
+          if (rng() < 0.55) artProp(`${pick(TRUCKS)}-r1.png`, x, v1 - 1.1);
+        }
+      }
+      stack(u0 + 0.45, v1 - park - 0.4);              // containers at the corners
+      if (lu >= 7) stack(u1 - 0.5, v1 - park - 0.4);
+      if (rng() < 0.4) artProp('industry/barrels.png', u1 - 0.35, v0 + 0.35);
+    }
+    const pointBox = (u, v) => [u - 0.05, u + 0.05, v - 0.05, v + 0.05];
+    // One industrial cell: the Cat's gas stop, or a workshop, a substation,
+    // or a cluster of utility masts.
+    function industryCell(c, u, v) {
+      pave(u, v);
+      if (c.gasStop) {                                // Cat's: canopy, kiosk and the pylon
+        for (let uu = u + 1; uu < u + 3; uu++) for (let vv = v; vv < v + 3; vv++) setGround(uu, vv, 'art/ground/lot');
+        artLot('cats/kiosk.png', u + 0.75, v + 0.6, c.district);
+        props.push(['art/cats/canopy.png', u + 2.2, v + 1.7, [u + 1.5, u + 2.9, v + 0.5, v + 2.9]]);
+        artProp('cats/sign.png', u + 0.5, v + 2.5);
+        return;
+      }
+      const r = rng();
+      if (r < 0.4) {
+        artLot('industry/workshop.png', u + 1.5, v + 1.3, c.district);
+        artProp('industry/barrels.png', u + 0.4, v + 2.6);
+        if (rng() < 0.6) artProp(`${pick(TRUCKS)}-r1.png`, u + 2.5, v + 2.3);
+      } else if (r < 0.7) {
+        artLot('industry/power-station.png', u + 1.5, v + 1.4, c.district);
+      } else {
+        artProp('industry/water-tower.png', u + 0.9, v + 0.9);
+        artProp('industry/cell-tower.png', u + 2.3, v + 0.7);
+        artProp('industry/dish.png', u + 2.0, v + 2.2);
+        artProp('industry/barrels.png', u + 0.6, v + 2.4);
+      }
+    }
+    // One port cell: on the water side a container yard, inland a warehouse
+    // with containers behind it.
+    function portCell(c, u, v) {
+      const coastal = NB4.some(([a, b]) => !cellAt(c.i + a, c.j + b));
+      if (coastal) {
+        for (let uu = u; uu < u + 3; uu++) for (let vv = v; vv < v + 3; vv++) setGround(uu, vv, 'art/ground/lot');
+        for (const [du, dv] of [[0.7, 0.6], [2.2, 0.6], [0.7, 1.9], [2.2, 1.9]]) if (rng() < 0.85) stack(u + du, v + dv);
+        return;
+      }
+      pave(u, v);
+      const name = pick(['port/warehouse-a.png', 'port/warehouse-b.png']), [a, b] = fp(name);
+      artLot(name, u + 1.5, v + 3 - 0.35 - b / 2, c.district);
+      stack(u + 0.6, v + 0.45, 0);
+      if (rng() < 0.6) stack(u + 2.2, v + 0.45, 0);
+    }
+
     // Town square (2×2 downtown): a row of buildings along its back edge
     // facing in and one along its street edge, around a grass square with a
     // fountain, corner trees, benches, lamps and flower beds.
@@ -791,9 +959,11 @@
     const free = [...cells.values()].filter(c => c.sup < 0);
     districts.forEach((d, id) => {
       const mine = shuffle(free.filter(c => c.district === id));
-      const names = shuffle([...CIVIC[d.type]]).slice(0, Math.max(0, Math.min(CIVIC[d.type].length, Math.floor(mine.length / 8))));
+      const names = shuffle([...CIVIC[d.type]]).slice(0, Math.max(d.type === 'port' ? 1 : 0,
+        Math.min(CIVIC[d.type].length, Math.floor(mine.length / 8))));
       names.forEach((name, k) => { if (mine[k]) mine[k].civic = `civic/${name}.png`; });
       if (d.type === 'suburb') { const c = mine[names.length]; if (c) c.diner = true; }
+      if (d.type === 'industrial') { const c = mine[names.length]; if (c) c.gasStop = true; }
       if (d.type === 'plaza') {                         // the most enclosed cell is the square
         const own = c => NB4.filter(([a, b]) => { const o = cellAt(c.i + a, c.j + b); return o && o.district === id; }).length;
         const sq = mine.filter(c => !c.civic).sort((a, b) => own(b) - own(a))[0];
@@ -848,6 +1018,8 @@
 
     supers.filter(sb => sb.type === 'suburb').forEach(sb => (sb.kind === 'square' ? suburbSquare : suburbBlock)(sb));
     supers.filter(sb => sb.kind === 'cats').forEach(catsBlock);
+    supers.filter(sb => sb.kind === 'factory').forEach(factoryBlock);
+    supers.filter(sb => sb.kind === 'nuclear').forEach(nuclearBlock);
     // Plaza fronts: in each plaza district one of every must-have shop first,
     // then the rest from a shuffled deck of all the designs (reshuffled when
     // it runs out), never the same shop as a neighbouring block.
@@ -865,6 +1037,8 @@
     });
     for (const c of free) {
       const u = roadAt(c.i) + 1, v = roadAt(c.j) + 1;
+      if (c.type === 'port') { if (c.civic) civicCell(c, u, v, 'paving'); else portCell(c, u, v); continue; }
+      if (c.type === 'industrial') { if (c.civic) civicCell(c, u, v, 'paving'); else industryCell(c, u, v); continue; }
       if (c.type === 'downtown') { if (c.civic) civicCell(c, u, v, 'paving'); continue; }
       if (c.type === 'suburb') {
         if (c.civic) { civicCell(c, u, v, 'grass'); continue; }
@@ -1004,9 +1178,19 @@
         }
         return n ? t / n : 0;
       };
+      // The port's water side is a quay: no beach, deep water right at the
+      // edge. portNear: its cells with the road and verge round them.
+      const portNear = new Set();
+      for (const c of cells.values()) {
+        if (c.type !== 'port') continue;
+        for (let u = roadAt(c.i) - 1; u <= roadAt(c.i + 1) + 1; u++) {
+          for (let v = roadAt(c.j) - 1; v <= roadAt(c.j + 1) + 1; v++) portNear.add(key(u, v));
+        }
+      }
       let sand = [];
       for (const [k, d] of dist) {
         if (!d) continue;
+        if (portNear.has(key(...from.get(k)))) { sea.add(k); continue; }
         const [u, v] = k.split(',').map(Number), f = front(u, v);
         const width = 1.4 + 6.6 * f * f + (field(u / 2.5, v / 2.5) - 0.5) * 2.4;
         if (d === 1 || d <= width) sand.push([u, v, f, d, width]);
@@ -1052,7 +1236,7 @@
       }
       // Sea tiles: shoreline autotiles where they touch sand (sides n = -u,
       // e = -v, s = +u, w = +v; corners where only the diagonal is dry).
-      const wet = (u, v) => u < 0 || v < 0 || u >= nu || v >= nv || sea.has(key(u, v));
+      const wet = (u, v) => u < 0 || v < 0 || u >= nu || v >= nv || sea.has(key(u, v)) || portNear.has(key(u, v));
       for (const k of sea) {
         const [u, v] = k.split(',').map(Number);
         const n = !wet(u - 1, v), e = !wet(u, v - 1), so = !wet(u + 1, v), w = !wet(u, v + 1);
@@ -1061,6 +1245,35 @@
           (!so && !w && !wet(u + 1, v + 1) ? 'sw' : '') + (!w && !n && !wet(u - 1, v + 1) ? 'wn' : '');
         setGround(u, v, sides || corners ? `art/ground/shore-${sides}${corners ? '-' + corners : ''}`
           : rng() < 0.5 ? 'art/ground/water-a' : 'art/ground/water-b');
+      }
+      // Quay: concrete on the port's verge, gantry cranes along the water's
+      // edge (boom out over the water), cargo ships moored alongside.
+      const quay = [];
+      for (const k of portNear) {
+        const [u, v] = k.split(',').map(Number);
+        if (!inCity(u, v) || isRoad(u, v)) continue;
+        if (!groundMap.has(k) || /grass/.test(groundMap.get(k)[0])) setGround(u, v, 'paving');
+        const out = [[0, -1], [1, 0], [0, 1], [-1, 0]].findIndex(([a, b]) => sea.has(key(u + a, v + b)));
+        if (out >= 0) quay.push([u, v, out]);
+      }
+      const DIR = [[0, -1], [1, 0], [0, 1], [-1, 0]];             // crane turn k: boom toward DIR[k]
+      quay.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      const cranes = [], ships = [];
+      for (const [u, v, k] of quay) {
+        if (cranes.some(([a, b]) => Math.abs(a - u) + Math.abs(b - v) < 3)) continue;
+        props.push([`art/port/crane${k ? '-r' + k : ''}.png`, u + 0.5, v + 0.5, [u + 0.1, u + 0.9, v + 0.15, v + 0.85]]);
+        cranes.push([u, v]);
+      }
+      for (const [u, v, k] of shuffle([...quay])) {
+        if (ships.length >= 3 || ships.some(([a, b]) => Math.abs(a - u) + Math.abs(b - v) < 6)) continue;
+        const [du, dv] = DIR[k], along = [dv !== 0 ? 1 : 0, du !== 0 ? 1 : 0];
+        const ok = [-2, -1, 0, 1, 2].every(t => [1, 2].every(r =>
+          sea.has(key(u + du * r + along[0] * t, v + dv * r + along[1] * t))));
+        if (!ok) continue;
+        const cu = u + 0.5 + du * 1.0, cv = v + 0.5 + dv * 1.0;
+        const box = along[0] ? [cu - 1.8, cu + 1.8, cv - 0.36, cv + 0.36] : [cu - 0.36, cu + 0.36, cv - 1.8, cv + 1.8];
+        props.push([`art/port/ship-${pick(['a', 'b'])}${along[0] ? '' : '-r1'}.png`, cu, cv, box]);
+        ships.push([u, v]);
       }
       // Offshore distance, for buoys and boats.
       const depth = new Map();
@@ -1310,7 +1523,7 @@
     }
 
     return {
-      ground, isRoad, isLand, isWater, lighthouse, parking, gas, junction, lots, props, signals, signalAt, rng, pick,
+      ground, isRoad, isLand, isWater, lighthouse, parking, gas, parkedCars, junction, lots, props, signals, signalAt, rng, pick,
       NU: nu, NV: nv, IU, IV, cells: cells.size,
       districts: districts.map(d => d.type), blockedDoors, blocked,
       cellList: [...cells.values()].map(c => [c.i, c.j, c.type, c.sup >= 0]),
@@ -1978,7 +2191,7 @@
       addStatic(() => img[src], x - ax, y - ay, box || pointBox(u, v)).src = src;
     }
     // Cars parked in the lot: the car sprite's first wheel frame, baked.
-    for (const pc of [...(city.parking ? city.parking.cars : []), ...(city.gas ? city.gas.cars : [])]) {
+    for (const pc of [...(city.parking ? city.parking.cars : []), ...(city.gas ? city.gas.cars : []), ...city.parkedCars]) {
       const f = frameFor(pc.head[0], pc.head[1]), [x, y] = iso(pc.u, pc.v);
       const px = Math.round(x), py = Math.round(y), [cw, ch] = CAR_CELL;
       const rx = px - CAR_PIVOT[0], ry = py - CAR_PIVOT[1];

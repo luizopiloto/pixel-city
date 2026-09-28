@@ -156,6 +156,9 @@ root.__pixelCityHook = ({ city, cars, step, seed: usedSeed }) => {
   process.exit();
 };
 
+// A throw while building the city would leave the hook uncalled: fail instead.
+process.on('unhandledRejection', e => { console.log(`seed ${seed}: FAILED building the city: ${e && e.stack || e}`); process.exit(1); });
+
 const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'city.js'), 'utf8');
 if (quiet) console.error = () => {};
 eval(src);
