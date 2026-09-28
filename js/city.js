@@ -591,7 +591,7 @@
       // straight (the turn onto the street starts at the lot's edge).
       props.push(['art/parking/gate-l.png', eu + 0.02, v1 - 0.55], ['art/parking/gate-r.png', eu + 0.98, v1 - 0.55]);
       props.push(['art/parking/sign.png', ...sign, [sign[0] - 0.25, sign[0] + 0.25, sign[1] - 0.03, sign[1] + 0.03]]);
-      parking = { cars, lead, behind: [sb.bi + 1, sb.bj + sb.bh], ahead: [sb.bi, sb.bj + sb.bh] };
+      parking = { cars, lead, behind: [sb.bi + 1, sb.bj + sb.bh], ahead: [sb.bi, sb.bj + sb.bh], area: [u0, u1, v0, v1] };
     }
 
     // TV station (one 2×2 downtown block): the studio under its lattice
@@ -658,7 +658,7 @@
       fillet(exitLead, [ur + 0.5, v0 + 2.5], [1, 0], [0, -1]);          // left, onto the +u street heading -v
       // Two right turns a tile apart would overlap (a backward kink), so the
       // way in never turns right onto the +v street at T1 either (noFrom).
-      gas = { cars, entry, exitLead, T1: [bi + 2, bj + 2], T2: [bi + 1, bj + 2], noFrom: [bi + 2, bj + 1],
+      gas = { cars, entry, exitLead, area: [u0, u0 + 5, v0 + 3, v0 + 6], T1: [bi + 2, bj + 2], T2: [bi + 1, bj + 2], noFrom: [bi + 2, bj + 1],
         exit: [[bi + 2, bj + 1], [bi + 2, bj]] };
     }
 
@@ -1214,7 +1214,7 @@
       const stops = [];
       const SIDES = [[[0, 1], 0], [[-1, 0], 1], [[0, -1], 2], [[1, 0], 3]];      // side of the block, sprite turn
       for (const c of cells.values()) {
-        if (c.sup >= 0 && supers[c.sup].kind === 'cats') continue;       // its own furniture, a driveway
+        if (c.sup >= 0 && ['cats', 'parking'].includes(supers[c.sup].kind)) continue;   // their own furniture
         const u0 = roadAt(c.i) + 1, v0 = roadAt(c.j) + 1;
         const busy = c.type === 'downtown' || c.type === 'plaza';
         for (const [[du, dv], k] of SIDES) {
@@ -1278,6 +1278,14 @@
       }
     }
     const blockedDoors = blocked.length;
+    // Parking lots hold only their own pieces (fence, gates, sign, carts).
+    const own = /parking\/|cats\/(cart|canopy|sign)/;
+    for (const a of [parking && parking.area, gas && gas.area].filter(Boolean)) {
+      for (let k = props.length - 1; k >= 0; k--) {
+        const [src, u, v] = props[k];
+        if (u >= a[0] && u <= a[1] && v >= a[2] && v <= a[3] && !own.test(src)) props.splice(k, 1);
+      }
+    }
     props.push(...late);
     // Drawn over the TV station, just in front of it in paint order.
     if (tvLed) for (const n of ['ads-side', 'ads-front', 'lift']) props.push([`art/landmarks/tv-${n}.png`, tvLed[0], tvLed[1],
