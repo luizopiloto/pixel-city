@@ -1957,6 +1957,9 @@ TOWER_ORANGE, TOWER_WHITE = rgb("#c05a30"), rgb("#ddd6c8")
 TV_PODIUM = (4.6, 4.6, 3)                        # studio podium a × b tiles, floors
 TV_R0, TV_H = 1.35, 440                          # tower half-width on the roof, px from roof to top belt
 TV_CANVAS = (700, 1180, 350, 900)
+TV_DECKS = [(172, 24), (316, 14)]                # observation decks: z above the roof, height
+LIFT_R = 0.24                                    # elevator shaft half-width
+LIFT_FRAMES = 64                                 # 8 s up and down at 8 fps
 
 
 def tv_front(s):
@@ -2035,7 +2038,12 @@ def tv_station(seed):
             prev = pt
     levels = [88, 112, 134, 154, 172, 188, 204, 218, 232, 246, 260, 274, 288, 302, 316, 330, 346, 362, 378, 394,
               410, 426, H]
+    # No bracing where the decks are: struts are drawn as lines with one
+    # depth, and would show through the deck walls.
+    in_deck = lambda z0, z1: any(z0 < dz + dh + 6 and z1 > dz - 6 for dz, dh in TV_DECKS)
     for z0, z1 in zip(levels, levels[1:]):
+        if in_deck(z0, z1):
+            continue
         h0, h1 = half(z0), half(z1)
         for k in range(4):
             (ax, ay), (bx, by) = corners[k], corners[(k + 1) % 4]
@@ -2053,8 +2061,19 @@ def tv_station(seed):
         s.box(-r, -r, z, 2 * r, 2 * r, h, flat(s, "#9c9284"), wall(2 * r * 71.6), wall(2 * r * 71.6))
         s.box(-r - 0.04, -r - 0.04, z + h, 2 * r + 0.08, 2 * r + 0.08, 4, flat(s, "#8e8680"), flat(s, "#bdb3a2"), flat(s, "#a69c8c"))
         s.box(-r - 0.02, -r - 0.02, z - 3, 2 * r + 0.04, 2 * r + 0.04, 3, flat(s, "#6e6e6e"), flat(s, "#5b5a5c"), flat(s, "#4a494b"))
-    deck(172, half(172) + 0.1, 24)
-    deck(316, half(316) + 0.08, 14)
+    # Panoramic elevator: an open steel frame up the middle from the roof to
+    # the top deck (its cabin is drawn by tv_lift, over this sprite).
+    top = TV_DECKS[-1][0]
+    for cx, cy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+        s.box(cx * LIFT_R - 0.012, cy * LIFT_R - 0.012, z0r, 0.024, 0.024, top, *(flat(s, c, 2) for c in STEEL))
+    for z in range(0, top, 24):
+        for k, (ax, ay) in enumerate(((-1, -1), (1, -1), (1, 1), (-1, 1))):
+            bx, by = ((1, -1), (1, 1), (-1, 1), (-1, -1))[k]
+            strut((ax * LIFT_R, ay * LIFT_R, z), (bx * LIFT_R, by * LIFT_R, z), rgb("#8e8897"), thick=1)
+    s.box(-LIFT_R - 0.03, -LIFT_R - 0.03, z0r, 2 * LIFT_R + 0.06, 2 * LIFT_R + 0.06, 3,
+          *(flat(s, c) for c in ("#8e8680", "#bdb3a2", "#a69c8c")))                 # landing on the roof
+    for dz, dh in TV_DECKS:
+        deck(dz, half(dz) + (0.1 if dz == TV_DECKS[0][0] else 0.08), dh)
     for z in range(H, H + 150, 4):                     # mast, striped, red light on top
         w = 0.1 * (1 - (z - H) / 190)
         s.box(-w / 2, -w / 2, z0r + z, w, w, 4, *(flat(s, band(z - H + 22) * k_) for k_ in (1.0, 0.9, 0.75)))
@@ -2298,6 +2317,32 @@ def led_ad(s, k, t, L, Hp):
                 out = stamp(out, col, row, text_bits("LIVE"), L * 0.42 + 3, Hp * 0.62 + 2, "#f0ece4", 1)
         return np.where(((xs + ys) % 2 == 0)[:, None], out, out * 0.8)       # LED dot pitch
     return shader
+
+
+def tv_lift(seed, f, depth):
+    """Frame f of the elevator cabin riding the tower's shaft, drawn over the
+    station: `depth` is the station's own depth buffer, so the legs and decks
+    in front hide it. It waits at the roof and the top deck, easing between."""
+    s = Sprite(*TV_CANVAS, seed)
+    s.depth = depth.copy()
+    t = f / LIFT_FRAMES
+    phase = min(1, max(0, (t - 0.1) / 0.35)) if t < 0.5 else 1 - min(1, max(0, (t - 0.6) / 0.35))
+    ease = phase * phase * (3 - 2 * phase)
+    a, b, floors = TV_PODIUM
+    roof = floors * FLOOR + 4 + 2
+    z = roof + 3 + ease * (TV_DECKS[-1][0] - 22)
+    r = LIFT_R - 0.04
+
+    def glass(a_, b_, xs, ys):
+        frame = (a_ < 0.12) | (a_ > 0.88) | (b_ < 0.1) | (b_ > 0.9)
+        rail = np.abs(b_ - 0.45) < 0.06
+        pane = np.array(GLASS_BLUE)[(xs // 2 + ys) % 4] * 1.25
+        out = np.where(rail[:, None], rgb("#c8c2b6"), pane)
+        return np.where(frame[:, None], rgb("#b8964a"), out)
+    s.box(-r, -r, z, 2 * r, 2 * r, 22, flat(s, "#8a6a2e"), glass, glass)
+    s.box(-r - 0.01, -r - 0.01, z + 22, 2 * r + 0.02, 2 * r + 0.02, 3, *(flat(s, c) for c in ("#b8964a", "#a08238", "#86692c")))
+    s.alpha[s.depth == depth] = 0                   # keep only the cabin, where it is in front
+    return s
 
 
 def tv_ads(seed, f, side):
@@ -2943,7 +2988,7 @@ def save_anim(frames, rel, **meta):
     path = OUT / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     imgs = [f.image() for f in frames]
-    boxes = [im.getbbox() for im in imgs]
+    boxes = [bb for bb in (im.getbbox() for im in imgs) if bb]   # a frame may be empty (all hidden)
     x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
     x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
     w, h = x1 - x0, y1 - y0
@@ -3135,6 +3180,7 @@ def main():
     save(spr, "buildings/hotel.png", footprint=[fa, fb])
     spr, (fa, fb) = tv_station(340)
     save(spr, "landmarks/tv-station.png", footprint=[fa, fb], tip=[0, -spr.tip])
+    save_anim([tv_lift(343, f, spr.depth) for f in range(LIFT_FRAMES)], "landmarks/tv-lift.png", footprint=[0.1, 0.1])
     save_anim([tv_ads(341, f, True) for f in range(AD_FRAMES)], "landmarks/tv-ads-side.png", footprint=[0.1, 0.1])
     save_anim([tv_ads(342, f, False) for f in range(AD_FRAMES)], "landmarks/tv-ads-front.png", footprint=[0.1, 0.1])
     spr, (fa, fb) = fastfood(320)

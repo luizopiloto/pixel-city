@@ -2543,6 +2543,21 @@
    -688
   ]
  },
+ "landmarks/tv-lift.png": {
+  "size": [
+   54,
+   307
+  ],
+  "anchor": [
+   27,
+   397
+  ],
+  "frames": 64,
+  "footprint": [
+   0.1,
+   0.1
+  ]
+ },
  "landmarks/tv-ads-side.png": {
   "size": [
    179,

@@ -1280,7 +1280,7 @@
     const blockedDoors = blocked.length;
     props.push(...late);
     // Drawn over the TV station, just in front of it in paint order.
-    if (tvLed) for (const n of ['side', 'front']) props.push([`art/landmarks/tv-ads-${n}.png`, tvLed[0], tvLed[1],
+    if (tvLed) for (const n of ['ads-side', 'ads-front', 'lift']) props.push([`art/landmarks/tv-${n}.png`, tvLed[0], tvLed[1],
       [tvLed[0] + 0.6, tvLed[0] + 0.7, tvLed[1] + 0.6, tvLed[1] + 0.7]]);
 
     // Crosswalks on the approaches to every 4-way crossing.
