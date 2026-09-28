@@ -710,6 +710,7 @@
     // and then drives in to refuel: `gas.entry` from the +v street to the
     // pump, `gas.exitLead` on out to the +u street heading +v.
     let gas = null;
+    const gasStops = [];                            // the industrial Cat's stops
     function catsBlock(sb) {
       const { u0, v0, bi, bj } = sb;
       pave(u0, v0, 7, 7);
@@ -871,9 +872,20 @@
       concrete(u, v);
       if (c.gasStop) {                                // Cat's: canopy, kiosk and the pylon
         for (let uu = u + 1; uu < u + 3; uu++) for (let vv = v; vv < v + 3; vv++) setGround(uu, vv, 'art/ground/lot');
-        artLot('cats/kiosk.png', u + 0.75, v + 0.6, c.district);
-        props.push(['art/cats/canopy.png', u + 2.2, v + 1.7, [u + 1.5, u + 2.9, v + 0.5, v + 2.9]]);
-        artProp('cats/sign.png', u + 0.5, v + 2.5);
+        artLot('cats/kiosk.png', u + 0.6, v + 0.55, c.district);
+        props.push(['art/cats/canopy.png', u + 1.85, v + 1.6, [u + 1.15, u + 2.55, v + 0.4, v + 2.8]]);
+        artProp('cats/sign.png', u + 0.45, v + 2.5);
+        // The hero's way in (off the +v street, down the +u column to the
+        // pump) and out (across the back, left onto the +u street heading
+        // -v), as at the plaza station.
+        const entry = [];
+        fillet(entry, [u + 2.5, v + 3.5], [-1, 0], [0, -1]);
+        entry.push([u + 2.5 + LANE, v + 1.65]);
+        const exitLead = [[u + 2.5 + LANE, v + 1.55]];
+        fillet(exitLead, [u + 2.5, v + 0.5], [0, -1], [1, 0]);
+        fillet(exitLead, [u + 3.5, v + 0.5], [1, 0], [0, -1]);
+        gasStops.push({ entry, exitLead, T1: [c.i + 1, c.j + 1], T2: [c.i, c.j + 1], noFrom: [c.i + 1, c.j],
+          exit: [[c.i + 1, c.j + 1], [c.i + 1, c.j]] });
         return;
       }
       const r = rng();
@@ -1535,7 +1547,7 @@
       const stops = [];
       const SIDES = [[[0, 1], 0], [[-1, 0], 1], [[0, -1], 2], [[1, 0], 3]];      // side of the block, sprite turn
       for (const c of cells.values()) {
-        if (c.sup >= 0 && ['cats', 'parking', 'nuclear'].includes(supers[c.sup].kind)) continue;   // their own furniture
+        if (c.gasStop || (c.sup >= 0 && ['cats', 'parking', 'nuclear'].includes(supers[c.sup].kind))) continue;   // their own furniture
         const u0 = roadAt(c.i) + 1, v0 = roadAt(c.j) + 1;
         const busy = c.type === 'downtown' || c.type === 'plaza';
         for (const [[du, dv], k] of SIDES) {
@@ -1631,7 +1643,7 @@
     }
 
     return {
-      ground, isRoad, isLand, isWater, lighthouse, parking, gas, nuclear, parkedCars, junction, lots, props, signals, signalAt, rng, pick,
+      ground, isRoad, isLand, isWater, lighthouse, parking, gas, gasStops, nuclear, parkedCars, junction, lots, props, signals, signalAt, rng, pick,
       NU: nu, NV: nv, IU, IV, cells: cells.size,
       districts: districts.map(d => d.type), blockedDoors, blocked,
       cellList: [...cells.values()].map(c => [c.i, c.j, c.type, c.sup >= 0]),
@@ -2049,8 +2061,8 @@
   // street heading -u, then into the pump; the next route leaves by the
   // exit lead onto the +u street.
   const REFUEL = 0.3;
-  const gas = city.gas && edgeOk(city.gas.T1, city.gas.T2) && edgeOk(...city.gas.exit) ? city.gas : null;
-  function toGas(from) {
+  const stations = [city.gas, ...(city.gasStops || [])].filter(g => g && edgeOk(g.T1, g.T2) && edgeOk(...g.exit));
+  function toGas(from, gas) {
     const k = n => n[0] + ',' + n[1];
     const same = (a, b) => a[0] === b[0] && a[1] === b[1];
     const seen = new Set([k(from.ahead) + '|' + k(from.behind)]);
@@ -2087,8 +2099,9 @@
       false, city.junction);
   }
   function planRoute(from) {
+    const gas = stations.length ? city.pick(stations) : null;          // one of the Cat's stations
     if (gas && !from.fromGas && city.rng() < REFUEL) {
-      const nodes = toGas(from);
+      const nodes = toGas(from, gas);
       if (nodes && nodes.length >= 2) {
         const pump = spotOn(gas.T1, gas.T2);
         return { path: routeThrough(from, nodes, pump, gas.entry),
