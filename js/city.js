@@ -262,6 +262,10 @@
     // The port and industry always go north (the top corner on screen, -u
     // -v), grown first; the rest take the other sides.
     const NORTH = ['port', 'industrial'];
+    // Nothing else grows seaward of the port (north of it, within 3 cells),
+    // so its quay always faces open sea.
+    const seawardOfPort = (i, j) => [...cells.values()].some(p => p.type === 'port' &&
+      Math.abs(i - p.i) <= 3 && Math.abs(j - p.j) <= 3 && i + j < p.i + p.j);
     const kinds = [...NORTH, ...shuffle(['suburb', 'park', 'plaza', ...(rng() < 0.6 ? ['suburb'] : [])])];
     const sides = shuffle([[1, 0], [0, 1], [1, 0], [0, 1], [-1, 0.6], [0.6, -1]]);
     const districts = [{ type: 'downtown' }];
@@ -271,7 +275,7 @@
       let seed = null, best = -Infinity;
       for (const c of cells.values()) for (const [di, dj] of NB4) {
         const ni = c.i + di, nj = c.j + dj;
-        if (filled(ni, nj)) continue;
+        if (filled(ni, nj) || (type !== 'port' && seawardOfPort(ni, nj))) continue;
         const score = (ni - center) * dx + (nj - center) * dy + rng() * 3;
         if (score > best) { best = score; seed = [ni, nj]; }
       }
@@ -287,6 +291,7 @@
           for (const [di, dj] of NB4) {
             const ni = c.i + di, nj = c.j + dj;
             if (ni < 1 || nj < 1 || ni >= GRID - 1 || nj >= GRID - 1 || filled(ni, nj)) continue;
+            if (type !== 'port' && seawardOfPort(ni, nj)) continue;
             const own = NB4.filter(([a, b]) => { const o = cells.get(key(ni + a, nj + b)); return o && o.district === id; }).length;
             const far = Math.hypot(ni - seed[0], nj - seed[1]);
             front.set(key(ni, nj), [ni, nj, own * own * (0.25 + field(ni, nj)) * Math.exp(-far / 5)]);
@@ -321,6 +326,15 @@
         let free = true, touch = 0;
         for (let a = 0; a < 4 && free; a++) for (let b = 0; b < 4 && free; b++) if (filled(bi + a, bj + b)) free = false;
         if (!free) continue;
+        // Clear of the port, so its quay keeps open water.
+        let nearPort = false;
+        for (let a = -3; a < 7 && !nearPort; a++) for (let b = -3; b < 7 && !nearPort; b++) {
+          const c = cells.get(key(bi + a, bj + b));
+          if (c && c.type === 'port') nearPort = true;
+        }
+        if (nearPort) continue;
+        for (let a = 0; a < 4 && !nearPort; a++) for (let b = 0; b < 4 && !nearPort; b++) if (seawardOfPort(bi + a, bj + b)) nearPort = true;
+        if (nearPort) continue;
         for (let t = 0; t < 4; t++) {
           touch += filled(bi - 1, bj + t) + filled(bi + 4, bj + t) + filled(bi + t, bj - 1) + filled(bi + t, bj + 4);
         }
@@ -1373,14 +1387,17 @@
         const [u, v] = k.split(',').map(Number);
         if (!inCity(u, v) || isRoad(u, v)) continue;
         if (!groundMap.has(k) || /grass/.test(groundMap.get(k)[0])) setGround(u, v, 'art/ground/concrete');
-        const out = [[0, -1], [1, 0], [0, 1], [-1, 0]].findIndex(([a, b]) => sea.has(key(u + a, v + b)));
-        if (out >= 0) quay.push([u, v, out]);
+        const faces = [[0, -1], [1, 0], [0, 1], [-1, 0]].map(([a, b]) => sea.has(key(u + a, v + b)));
+        const out = faces.indexOf(true);
+        if (out >= 0) quay.push([u, v, out, faces.filter(Boolean).length > 1]);
       }
       const DIR = [[0, -1], [1, 0], [0, 1], [-1, 0]];             // crane turn k: boom toward DIR[k]
       quay.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
       const cranes = [], ships = [];
-      for (const [u, v, k] of quay) {
-        if (cranes.some(([a, b]) => Math.abs(a - u) + Math.abs(b - v) < 3)) continue;
+      for (const [u, v, k, corner] of quay) {                   // not on corners, 4 tiles apart
+        if (corner || cranes.some(([a, b]) => Math.abs(a - u) + Math.abs(b - v) < 4)) continue;
+        const [du, dv] = DIR[k];                                     // its boom needs open water out front
+        if (![1, 2, 3].every(r => [-1, 0, 1].every(t => sea.has(key(u + du * r + dv * t, v + dv * r + du * t))))) continue;
         props.push([`art/port/crane${k ? '-r' + k : ''}.png`, u + 0.5, v + 0.5, [u + 0.1, u + 0.9, v + 0.15, v + 0.85]]);
         cranes.push([u, v]);
       }
