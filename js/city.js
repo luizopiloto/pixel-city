@@ -11,6 +11,8 @@
  *   data-zoom       CSS px per art px (default 1)
  *   data-minimap    id of an element to hold the GPS phone (optional)
  *   data-tiltshift  "off" to disable the tilt-shift blur
+ *   data-quality    "high", "medium" or "low" to pin the quality tier
+ *                   (default: adapts to the device's frame rate)
  */
 (() => {
   const TW = 128, TH = 64, HW = TW / 2, HH = TH / 2;
@@ -2234,18 +2236,36 @@
     root.appendChild(canvas);
     const ctx = canvas.getContext('2d');
 
+    // Quality tiers. high: full resolution, tilt-shift. medium: no tilt-shift,
+    // the canvas drawn at half the display scale where that divides evenly.
+    // low: drawn at art-pixel scale, no tilt-shift, 30 fps. ?quality= or
+    // data-quality pins one; otherwise it adapts (see adapt()).
+    const TIERS = ['low', 'medium', 'high'];
+    const pinned = (new URLSearchParams(location.search).get('quality') || root.dataset.quality || '').toLowerCase();
+    // Unpinned, it starts at medium on touch screens and dense displays.
+    const firstGuess = window.matchMedia('(pointer: coarse)').matches || (window.devicePixelRatio || 1) >= 2 ? 'medium' : 'high';
+    let quality = TIERS.includes(pinned) ? pinned : firstGuess;
+    const capFor = display => quality === 'low' ? 1 : quality === 'medium' ? Math.max(1, Math.floor(display / 2)) : Infinity;
+
     // Tilt-shift layers (styled in CSS); render() keeps the sharp band on the
-    // hero via --tilt-focus.
-    const tilt = root.dataset.tiltshift !== 'off';
-    if (tilt) {
-      root.classList.add('pixel-city--tiltshift');
-      const t = document.createElement('div');
-      t.className = 'pixel-city__tiltshift';
-      t.setAttribute('aria-hidden', 'true');
-      for (let i = 0; i < 3; i++) t.appendChild(document.createElement('span'));
-      root.appendChild(t);
+    // hero via --tilt-focus. Only in the high tier.
+    const tiltWanted = root.dataset.tiltshift !== 'off';
+    let tilt = false, tiltEl = null;
+    if (tiltWanted) {
+      tiltEl = document.createElement('div');
+      tiltEl.className = 'pixel-city__tiltshift';
+      tiltEl.setAttribute('aria-hidden', 'true');
+      for (let i = 0; i < 3; i++) tiltEl.appendChild(document.createElement('span'));
+      root.appendChild(tiltEl);
     }
     let tiltFocus = -1;
+    function applyTilt() {
+      tilt = tiltWanted && quality === 'high';
+      root.classList.toggle('pixel-city--tiltshift', tilt);
+      root.classList.toggle('pixel-city--vivid', tiltWanted && quality !== 'low');
+      if (tiltEl) tiltEl.hidden = !tilt;
+    }
+    applyTilt();
 
     // Tiles whose diamond (and slab) overlaps a screen rect, back to front.
     function forTiles([x, y, w, h], fn) {
@@ -3010,10 +3030,15 @@
 
     /* ---------- view ---------- */
 
-    // Whole device px per art px keeps pixels sharp.
-    const view = { scale: 1, w: 0, h: 0, x: 0, y: 0, camX: 0, camY: 0 };
-    let mmScale = 1;
-    // Snap motion to device pixels (finer than art pixels) for smoothness.
+    // view.display: device px per art px (whole, so pixels stay sharp).
+    // view.scale: the scale the canvas is drawn at, a divisor of display, so
+    // CSS can stretch it by a whole factor (image-rendering: pixelated). On a
+    // 3× phone drawing at 1 fills a ninth of the pixels. renderCap (from the
+    // quality tier) caps it.
+    const view = { scale: 1, display: 1, w: 0, h: 0, x: 0, y: 0, camX: 0, camY: 0 };
+    let mmScale = 1, renderCap = Infinity;
+    const divisorUpTo = (n, cap) => { for (let r = Math.min(n, cap); r > 1; r--) if (n % r === 0) return r; return 1; };
+    // Snap motion to the canvas's pixels (finer than art pixels when it can).
     const snap = a => Math.round(a * view.scale) / view.scale;
     function resize() {
       const dpr = window.devicePixelRatio || 1;
@@ -3021,17 +3046,20 @@
       // Phone is MM_FRAC of the container height, drawn sharp then scaled by CSS.
       const mmH = ch * MM_FRAC;
       mmScale = Math.max(1, Math.ceil(mmH * dpr / MM_H));
+      if (quality !== 'high') mmScale = Math.max(1, Math.floor(mmScale / (quality === 'low' ? 3 : 2)));
       mmCanvas.width = MM_W * mmScale;
       mmCanvas.height = MM_H * mmScale;
       mmCanvas.style.width = mmH * MM_W / MM_H + 'px';
       mmCanvas.style.height = mmH + 'px';
-      view.scale = Math.max(1, Math.round(zoom * dpr));
-      canvas.width = Math.max(1, Math.floor(cw * dpr));
-      canvas.height = Math.max(1, Math.floor(ch * dpr));
-      canvas.style.width = canvas.width / dpr + 'px';
-      canvas.style.height = canvas.height / dpr + 'px';
-      view.w = Math.ceil(canvas.width / view.scale);
-      view.h = Math.ceil(canvas.height / view.scale);
+      view.display = Math.max(1, Math.round(zoom * dpr));
+      renderCap = capFor(view.display);
+      view.scale = divisorUpTo(view.display, renderCap);
+      view.w = Math.ceil(cw * dpr / view.display);
+      view.h = Math.ceil(ch * dpr / view.display);
+      canvas.width = view.w * view.scale;
+      canvas.height = view.h * view.scale;
+      canvas.style.width = view.w * view.display / dpr + 'px';
+      canvas.style.height = view.h * view.display / dpr + 'px';
       ctx.imageSmoothingEnabled = false;
     }
 
@@ -3172,8 +3200,8 @@
         `scene ${ms('scene')}  waves ${ms('waves')}  animated ${ms('animated')}  cars ${ms('cars')}`,
         `sky ${ms('sky')}  minimap ${ms('minimap')}`,
         `bakes ${perf.bakes}  avg ${(perf.bakeMs / (perf.bakes || 1)).toFixed(1)}  max ${perf.bakeMax.toFixed(1)} ms`,
-        `gaps >20 ms ${perf.gaps20}  >33 ms ${perf.gaps33}  max ${perf.gapMax.toFixed(0)} ms`,
-        `canvas ${canvas.width}×${canvas.height}  scale ${view.scale}  chunks ${chunks.size}`,
+        `late ${perf.gaps20}  dropped ${perf.gaps33}  longest ${perf.gapMax.toFixed(0)} ms`,
+        `${quality}  canvas ${canvas.width}×${canvas.height}  scale ${view.scale}/${view.display}  chunks ${chunks.size}`,
       ].join('\n');
       Object.assign(perf, { t: {}, frames: 0, gaps20: 0, gaps33: 0, gapMax: 0, bakes: 0, bakeMs: 0, bakeMax: 0, since: now });
     }
@@ -3246,21 +3274,51 @@
 
     const still = window.matchMedia('(prefers-reduced-motion: reduce)');
     let last = performance.now();
+    // Adaptive quality: over 2 s windows, drop a tier when frames come more
+    // than 20% late; rise one after `rise` windows in a row on time with the
+    // JS work under a third of the frame. Each drop doubles `rise`, so it
+    // settles instead of flipping back and forth.
+    const A = { ms: 0, n: 0, gap: 0, work: 0, good: 0, rise: 5 };
+    function setQuality(q) {
+      quality = q;
+      applyTilt();
+      resize();
+      follow(Infinity);
+      if (debug) console.log(`pixel-city: quality ${q}`);
+    }
+    function adapt(gap, work) {
+      if (TIERS.includes(pinned) || gap > 250) return;     // pinned, or back from a hidden tab
+      A.ms += gap; A.n++; A.gap += gap; A.work += work;
+      if (A.ms < 2000) return;
+      const want = quality === 'low' ? 33.4 : 16.7, gapAvg = A.gap / A.n, workAvg = A.work / A.n;
+      A.ms = A.n = A.gap = A.work = 0;
+      const k = TIERS.indexOf(quality);
+      if (gapAvg > want * 1.2 && k > 0) {
+        A.good = 0; A.rise *= 2;
+        setQuality(TIERS[k - 1]);
+      } else if (gapAvg < want * 1.08 && workAvg < want / 3 && k < TIERS.length - 1) {
+        if (++A.good >= A.rise) { A.good = 0; setQuality(TIERS[k + 1]); }
+      } else A.good = 0;
+    }
+
+    let skip = false;
     function frame(now) {
-      const dt = Math.min(0.05, (now - last) / 1000);
-      if (perf) {                                       // frame gaps: the stutter measure
-        const gap = now - last;
-        if (gap > 20) perf.gaps20++;
-        if (gap > 33) perf.gaps33++;
+      if (quality === 'low' && (skip = !skip)) { requestAnimationFrame(frame); return; }   // 30 fps, evenly paced
+      const gapMs = now - last, dt = Math.min(0.1, gapMs / 1000);
+      if (perf) {                                       // late and dropped frames: the stutter measure
+        const gap = now - last, want = quality === 'low' ? 33.4 : 16.7;
+        if (gap > want * 1.25) perf.gaps20++;
+        if (gap > want * 1.9) perf.gaps33++;
         perf.gapMax = Math.max(perf.gapMax, gap);
       }
       last = now;
       if (onScreen && !still.matches && !document.hidden) {
-        const ps = perf ? performance.now() : 0;
+        const t0 = performance.now();
         step(dt);
-        perfNote('step', ps);
+        perfNote('step', t0);
         follow(dt);
         render();
+        adapt(gapMs, performance.now() - t0);
       }
       requestAnimationFrame(frame);
     }

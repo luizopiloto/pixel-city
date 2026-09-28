@@ -23,7 +23,7 @@ const quiet = process.argv.includes('--quiet');
 // Minimal browser stand-ins: a canvas context that accepts any call.
 const noop = new Proxy(function () {}, { get: () => noop, apply: () => noop, set: () => true });
 const el = () => ({
-  style: { setProperty() {} }, dataset: {}, classList: { add() {} }, setAttribute() {}, appendChild() {},
+  style: { setProperty() {} }, dataset: {}, classList: { add() {}, toggle() {} }, setAttribute() {}, appendChild() {},
   addEventListener() {}, remove() {}, getContext: () => noop, width: 0, height: 0,
   clientWidth: 1600, clientHeight: 900,
 });

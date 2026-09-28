@@ -36,10 +36,24 @@ The container defaults to 16:9 at full width; size it however you need.
 | `data-seed` | random | Pins the city layout. Without it, every page load builds a new city. |
 | `data-assets` | `assets/` | Path to the assets folder. |
 | `data-tiltshift` | on | `"off"` removes the tilt-shift blur. |
+| `data-quality` | adapts | `"high"`, `"medium"` or `"low"` pins the quality tier (see below). |
 | `data-minimap` | — | Id of an element to hold the GPS phone. Without it, the phone sits in the bottom-right corner. |
 
 The "Standalone preview only" rules at the end of `css/style.css` make
 `index.html` fill the window; drop them when embedding.
+
+## Quality tiers
+
+The page adapts to the device: over 2 s windows it drops a tier when frames
+come late and rises again after a while on time.
+
+- **high**: drawn at full display resolution, tilt-shift blur and colour grade.
+- **medium**: no tilt-shift blur; on dense (2× or 3×) screens the canvas is
+  drawn at a whole fraction of the display resolution and stretched sharp by
+  CSS (a 3× phone fills a ninth of the pixels).
+- **low**: drawn at art-pixel resolution, no blur or colour grade, 30 fps.
+
+It starts at medium on touch screens and dense displays, high otherwise.
 
 ## Run locally
 
@@ -53,6 +67,7 @@ Then open http://localhost:8080. URL switches for checking things:
 - `?look=u,v`: pin the camera on tile (u, v) instead of following the hero
 - `?loading`: keep the loading screen up
 - `?debug`: log startup phase times, the seed and chunk bakes
+- `?quality=high|medium|low`: pin the quality tier
 - `?perf`: an overlay of where frame time goes (per-section ms, chunk bakes,
   frame gaps over 20 and 33 ms, the canvas size and scale)
 
