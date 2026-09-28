@@ -2189,6 +2189,13 @@
     // Startup runs in phases with a frame between each, so the loading
     // animation keeps moving. ?debug logs how long each phase took.
     const debug = new URLSearchParams(location.search).has('debug');
+    // ?perf: an overlay of where frame time goes (see perfNote / perfShow).
+    const perf = new URLSearchParams(location.search).has('perf')
+      ? { t: {}, frames: 0, gaps20: 0, gaps33: 0, gapMax: 0, bakes: 0, bakeMs: 0, bakeMax: 0, since: performance.now() }
+      : null;
+    // Adds the time since t0 to section k; returns now. A no-op without ?perf.
+    const perfNote = perf ? (k, t0) => { const t = performance.now(); perf.t[k] = (perf.t[k] || 0) + t - t0; return t; }
+      : (k, t0) => t0;
     let mark = performance.now();
     const phase = async name => {
       if (debug) console.log(`pixel-city: ${name} ${(performance.now() - mark).toFixed(0)} ms`);
@@ -2443,6 +2450,7 @@
         if (c.top) paintRegion(c.top.g, rect, false, true);
         chunks.set(key, c);
         if (debug) console.log(`pixel-city: chunk ${key} ${(performance.now() - t0).toFixed(1)} ms, ${chunks.size} cached`);
+        if (perf) { const d = performance.now() - t0; perf.bakes++; perf.bakeMs += d; perf.bakeMax = Math.max(perf.bakeMax, d); }
         if (chunks.size > chunkCap) {                      // drop the least recently used
           let old = null;
           for (const o of chunks.values()) if (o !== c && (!old || o.used < old.used)) old = o;
@@ -2468,7 +2476,9 @@
         shown.push(c);
       }
       if (shown.some(c => c.wet)) {
+        const pw = perf ? performance.now() : 0;
         drawWaves(g, rect);
+        perfNote('waves', pw);
         for (const c of shown) if (c.top) g.drawImage(c.top.canvas, c.i * CHUNK_W, c.j * CHUNK_H);
       }
       for (let i = i0 - 1; i <= i1 + 1; i++) for (let j = j0 - 1; j <= j1 + 1; j++) {
@@ -3065,11 +3075,14 @@
     }
 
     function render() {
+      let pt = perf ? performance.now() : 0;
+      const pt0 = pt;
       const s = view.scale;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(s, 0, 0, s, -view.x * s, -view.y * s);
       drawScene(ctx, [view.x, view.y, view.w, view.h]);
+      pt = perfNote('scene', pt);
 
       const inView = [view.x - 64, view.y - 64, view.w + 128, view.h + 128];
       // Animated sprites (the fountains), then whatever stands in front of
@@ -3086,6 +3099,7 @@
         front.forEach(st => st.draw(ctx));
         ctx.restore();
       }
+      pt = perfNote('animated', pt);
       const visible = [];
       for (const car of cars) {
         // Footprint box: the car's length along its heading, width across.
@@ -3124,6 +3138,7 @@
         ctx.restore();
       }
 
+      pt = perfNote('cars', pt);
       for (const a of animated) if (a.sky && overlap(a.rect, inView)) a.draw(ctx);   // smoke and steam
       drawBeam(ctx);
       drawTipLight(ctx);
@@ -3135,7 +3150,32 @@
         const f = Math.round((hy - 20 - view.y) * s / canvas.height * 1000) / 10;
         if (f !== tiltFocus) root.style.setProperty('--tilt-focus', (tiltFocus = f) + '%');
       }
+      pt = perfNote('sky', pt);
       drawMinimap();
+      pt = perfNote('minimap', pt);
+      if (perf) { perfNote('render', pt0); perfShow(); }
+    }
+    // The ?perf overlay: averages per frame over the last ~2 s.
+    let perfEl = null;
+    function perfShow() {
+      perf.frames++;
+      const now = performance.now();
+      if (now - perf.since < 2000) return;
+      if (!perfEl) {
+        perfEl = document.createElement('pre');
+        perfEl.className = 'pixel-city__perf';
+        root.appendChild(perfEl);
+      }
+      const f = perf.frames, ms = k => ((perf.t[k] || 0) / f).toFixed(2);
+      perfEl.textContent = [
+        `${(f / (now - perf.since) * 1000).toFixed(0)} fps  render ${ms('render')} ms  step ${ms('step')} ms`,
+        `scene ${ms('scene')}  waves ${ms('waves')}  animated ${ms('animated')}  cars ${ms('cars')}`,
+        `sky ${ms('sky')}  minimap ${ms('minimap')}`,
+        `bakes ${perf.bakes}  avg ${(perf.bakeMs / (perf.bakes || 1)).toFixed(1)}  max ${perf.bakeMax.toFixed(1)} ms`,
+        `gaps >20 ms ${perf.gaps20}  >33 ms ${perf.gaps33}  max ${perf.gapMax.toFixed(0)} ms`,
+        `canvas ${canvas.width}×${canvas.height}  scale ${view.scale}  chunks ${chunks.size}`,
+      ].join('\n');
+      Object.assign(perf, { t: {}, frames: 0, gaps20: 0, gaps33: 0, gapMax: 0, bakes: 0, bakeMs: 0, bakeMax: 0, since: now });
     }
 
     // Lighthouse beam: two opposite wedges of light turning at lamp height,
@@ -3208,9 +3248,17 @@
     let last = performance.now();
     function frame(now) {
       const dt = Math.min(0.05, (now - last) / 1000);
+      if (perf) {                                       // frame gaps: the stutter measure
+        const gap = now - last;
+        if (gap > 20) perf.gaps20++;
+        if (gap > 33) perf.gaps33++;
+        perf.gapMax = Math.max(perf.gapMax, gap);
+      }
       last = now;
       if (onScreen && !still.matches && !document.hidden) {
+        const ps = perf ? performance.now() : 0;
         step(dt);
+        perfNote('step', ps);
         follow(dt);
         render();
       }

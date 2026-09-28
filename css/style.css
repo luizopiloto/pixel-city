@@ -82,6 +82,19 @@
   pointer-events: none;
 }
 
+.pixel-city__perf {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 4;
+  margin: 0;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, .75);
+  color: #7cf07c;
+  font: 12px/1.35 ui-monospace, monospace;
+  pointer-events: none;
+}
+
 .pixel-city__sr {
   position: absolute;
   width: 1px;

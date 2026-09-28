@@ -53,6 +53,8 @@ Then open http://localhost:8080. URL switches for checking things:
 - `?look=u,v`: pin the camera on tile (u, v) instead of following the hero
 - `?loading`: keep the loading screen up
 - `?debug`: log startup phase times, the seed and chunk bakes
+- `?perf`: an overlay of where frame time goes (per-section ms, chunk bakes,
+  frame gaps over 20 and 33 ms, the canvas size and scale)
 
 `node tools/sim.js [seconds] [seed]` runs the real `js/city.js` headless:
 it reports the city (cells, size, lights, cars, districts),
