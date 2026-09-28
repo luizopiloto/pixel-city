@@ -2166,12 +2166,12 @@
  },
  "industry/dish.png": {
   "size": [
-   52,
-   88
+   91,
+   111
   ],
   "anchor": [
-   29,
-   78
+   50,
+   91
   ]
  },
  "industry/barrels.png": {

@@ -3353,21 +3353,71 @@ def cell_tower(seed):
     return s
 
 
-def dish_antenna(seed):
-    """Big parabolic antenna on a pedestal, tilted up toward the sky."""
-    s = Sprite(160, 170, 80, 130, seed)
-    s.box(-0.16, -0.16, 0, 0.32, 0.32, 18, *(flat(s, c) for c in ("#c8c2b6", "#a69c8c", "#8e8680")))
-    s.box(-0.05, -0.05, 18, 0.1, 0.1, 22, *(flat(s, c) for c in STEEL))
-    cx, cy = s.proj(0, 0.05, 62)
-    ys, xs = np.mgrid[0:s.h, 0:s.w]
-    d = ((xs + 0.5 - cx) / 26) ** 2 + ((ys + 0.5 - cy) / 18) ** 2
-    inside = d <= 1
-    col = np.array([*rgb("#e8e4dc")])[None] * (0.8 + 0.25 * (1 - d[inside]))[:, None]
-    s._write(np.ones(inside.sum(), bool), ys[inside], xs[inside], np.full(inside.sum(), 0.4), col)
-    rim = (d > 0.86) & (d <= 1)
-    s._write(np.ones(rim.sum(), bool), ys[rim], xs[rim], np.full(rim.sum(), 0.41), np.repeat(rgb("#a69c8c")[None], rim.sum(), 0))
-    s.line((cx, cy), (cx + 6, cy - 16), rgb("#5b5a5c"), 0.5)       # feed arm
-    s.blob((0, 0.05, 40), 3, ramp("#5b5a5c", "#716f74", "#8e8897"))
+def dish_antenna(seed, el=42, az=150, R=34, f=19):
+    """Big parabolic antenna: a white reflector bowl (radius R px, focal
+    length f) tilted up by `el` degrees and turned `az` degrees from +u
+    toward +v, shaded panel by panel (white inside, gray behind), a rim, four
+    struts to the feed horn at the focus; an azimuth turret and yoke on a
+    concrete pad, with a small equipment hut."""
+    s = Sprite(200, 210, 100, 165, seed)
+    T = 71.6                                            # px per tile along u / v
+    conc = [flat(s, c, 4) for c in ("#c8c2b6", "#b3ab9e", "#9c9486")]
+    s.box(-0.32, -0.32, 0, 0.64, 0.64, 5, *conc)
+    hut = lambda a_, b_, xs, ys: np.where(((a_ > 0.35) & (a_ < 0.65) & (b_ < 0.75))[:, None], rgb("#5b5a5c"), rgb("#d8d4cc"))
+    s.box(0.1, -0.3, 5, 0.2, 0.24, 15, flat(s, "#bdb3a2"), hut, flat(s, "#c8c4bc"))
+    steel = [flat(s, c, 2) for c in ("#a8a4ae", "#8e8a94", "#76727c")]
+    s.box(-0.08, -0.08, 5, 0.16, 0.16, 26, *steel)                     # turret
+    s.box(-0.12, -0.12, 31, 0.24, 0.24, 5, *steel)                     # turntable
+    e, a = math.radians(el), math.radians(az)
+    axis = np.array([math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e)])
+    e1 = np.array([-math.sin(a), math.cos(a), 0.0])
+    e2 = np.cross(axis, e1)
+    V = np.array([0.0, 0.0, 44.0]) + axis * 7                           # the bowl's vertex (px space)
+    to_cam = np.array([0.61, 0.61, 0.5]); to_cam /= np.linalg.norm(to_cam)
+    L = np.array([0.35, 0.6, 0.72]); L /= np.linalg.norm(L)
+    W = lambda P: (P[0] / T, P[1] / T, P[2])                           # px space -> sprite coords
+    def pt(r, t):
+        return V + e1 * r * math.cos(t) + e2 * r * math.sin(t) + axis * (r * r / (4 * f))
+    nr, ns = 7, 32
+    inner, back = rgb("#eceae4"), rgb("#9c9aa2")
+    for i in range(nr):
+        r0, r1 = R * i / nr, R * (i + 1) / nr
+        for k in range(ns):
+            t0, t1 = 2 * math.pi * k / ns, 2 * math.pi * (k + 1) / ns
+            q = [pt(r0, t0), pt(r1, t0), pt(r1, t1), pt(r0, t1)]
+            for tri in ((q[0], q[1], q[2]), (q[0], q[2], q[3])):
+                n = np.cross(tri[1] - tri[0], tri[2] - tri[0])
+                if np.linalg.norm(n) < 1e-9:
+                    continue
+                n /= np.linalg.norm(n)
+                if np.dot(n, axis) < 0:
+                    n = -n                                              # the concave (front) side
+                front = np.dot(n, to_cam) > 0
+                lit = 0.62 + 0.42 * max(0.0, float(np.dot(n if front else -n, L)))
+                col = (inner if front else back) * lit
+                if front and (i == nr - 1):
+                    col = col * 0.93                                    # a faint band near the rim
+                o = W(tri[0])
+                s.face(o, np.subtract(W(tri[1]), o), np.subtract(W(tri[2]), o), flat(s, np.minimum(col, 255), 2),
+                       tri=True, light=1.0)
+    rim = [pt(R, 2 * math.pi * k / 48) for k in range(49)]             # rim edge
+    for p0, p1 in zip(rim, rim[1:]):
+        a0, a1 = W(p0), W(p1)
+        s.line(s.proj(*a0), s.proj(*a1), rgb("#bdb8ae"), a0[0] + a0[1] + 0.01)
+    F = V + axis * f                                                    # feed at the focus, on four struts
+    for k in range(4):
+        rp = W(pt(R * 0.96, math.pi / 4 + k * math.pi / 2))
+        s.line(s.proj(*rp), s.proj(*W(F)), rgb("#8e8a94"), (rp[0] + rp[1] + W(F)[0] + W(F)[1]) / 2 + 0.02)
+    fw = W(F)
+    s.blob(fw, 3.2, ramp("#5b5a5c", "#8e8a94", "#c8c4cc"), shade=0.2)
+    # Yoke: two arms up from the turntable to the hub on the bowl's back.
+    hub = W(V - axis * 3)
+    for side in (-1, 1):
+        base = (side * 0.07 * math.sin(a), -side * 0.07 * math.cos(a) * -1, 36)
+        a0, a1 = s.proj(*base), s.proj(*hub)
+        for dx in (0, 1, 2):
+            s.line((a0[0] + dx, a0[1]), (a1[0] + dx, a1[1]), rgb("#8e8a94") * (1.0 if dx else 0.8), hub[0] + hub[1] - 0.3)
+    s.blob(hub, 5, ramp("#5b5a5c", "#76727c", "#9c98a2"), shade=0.1)
     s.outline(0.8)
     return s
 

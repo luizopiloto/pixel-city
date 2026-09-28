@@ -782,7 +782,7 @@
       artLot('nuclear/turbine-hall.png', u0 + 10.4, v0 + 7.0);
       artLot('port/warehouse-b.png', u0 + 8.6, v0 + 2.5);                     // fuel storage
       artLot('industry/workshop.png', u0 + 7.4, v0 + 7.2);                    // maintenance
-      artProp('industry/dish.png', u0 + 8.4, v0 + 5.0);
+      artProp('industry/dish.png', u0 + 6.9, v0 + 4.8);
       artProp('industry/barrels.png', u0 + 6.3, v0 + 8.6);
       artProp('industry/cell-tower.png', u0 + 13.2, v0 + 1.2);
       artProp('port/stack-a.png', u0 + 13.6, v0 + 8.6);
