@@ -2294,28 +2294,33 @@
       });
     }
 
-    // Moving water, drawn every frame between a chunk's ground and its
-    // sprites: waves rolling onto every shore tile (their phase drifts slowly
-    // along the coast, so neighbors mostly agree) and glints on open water.
-    const WAVE_S = 3.2, ANIM_FPS = 8;
-    function drawWaves(g, rect) {
-      const t = clock / WAVE_S;
+    // Moving water, between a chunk's ground and its sprites: waves rolling
+    // onto every shore tile (their phase drifts slowly along the coast, so
+    // neighbors mostly agree) and glints on open water. A wet chunk lists
+    // its water tiles once (waterTiles) and re-composites ground + water only
+    // when the wave clock, quantized to WAVE_HZ, ticks (see drawScene).
+    const WAVE_S = 3.2, ANIM_FPS = 8, WAVE_HZ = 8;
+    function waterTiles(rect) {
+      const out = [];
       forTiles(rect, (u, v) => {
         if (!city.isWater(u, v)) return;
         const name = city.ground(u, v)[0], [x, y] = iso(u, v);
-        let atlas, f;
         if (name.startsWith('art/ground/shore-')) {
-          atlas = img['art/ground/foam-' + name.slice(17) + '.png'];
-          const frames = atlas ? atlas.width / 128 : 1;     // frames side by side in the atlas
-          f = Math.floor((t + (u + v) * 0.012) * frames) % frames;
+          const atlas = img['art/ground/foam-' + name.slice(17) + '.png'];
+          if (atlas) out.push({ atlas, x: x - HW, y, frames: atlas.width / 128, phase: (u + v) * 0.012 });
         } else {
-          const h = ((u * 73856093) ^ (v * 19349663)) >>> 0;          // each tile glints now and then
-          f = Math.floor(t * 5 + (h % 97)) % 40;
-          if (f >= 4) return;
-          atlas = img['art/ground/glints.png'];
+          out.push({ atlas: img['art/ground/glints.png'], x: x - HW, y, glint: (((u * 73856093) ^ (v * 19349663)) >>> 0) % 97 });
         }
-        if (atlas) g.drawImage(atlas, f * 128, 0, 128, atlas.height, x - HW, y, 128, atlas.height);
       });
+      return out;
+    }
+    function drawWater(g, tiles, t) {
+      for (const w of tiles) {
+        let f;
+        if (w.glint === undefined) f = Math.floor((t + w.phase) * w.frames) % w.frames;
+        else if ((f = Math.floor(t * 5 + w.glint) % 40) >= 4) continue;      // each tile glints now and then
+        g.drawImage(w.atlas, f * 128, 0, 128, w.atlas.height, w.x, w.y, 128, w.atlas.height);
+      }
     }
 
     await phase('ground');
@@ -2465,6 +2470,7 @@
         let wet = false;
         forTiles(rect, (u, v) => { wet = wet || city.isWater(u, v); });
         c = { ...layer(i, j), i, j, wet };
+        if (wet) Object.assign(c, { water: waterTiles(rect), comp: layer(i, j), tick: -1 });
         if (wet && hash.query(rect).size) c.top = layer(i, j);
         paintRegion(c.g, rect, true, !wet);
         if (c.top) paintRegion(c.top.g, rect, false, true);
@@ -2489,17 +2495,20 @@
       chunkTick++;
       const [i0, i1, j0, j1] = chunkRange(rect);
       chunkCap = Math.max(CHUNK_CAP, (i1 - i0 + 3) * (j1 - j0 + 3));
-      const shown = [];
+      const tick = Math.floor(clock * WAVE_HZ), t = tick / WAVE_HZ / WAVE_S;
       for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
-        const c = chunk(i, j);
-        g.drawImage(c.canvas, i * CHUNK_W, j * CHUNK_H);
-        shown.push(c);
-      }
-      if (shown.some(c => c.wet)) {
-        const pw = perf ? performance.now() : 0;
-        drawWaves(g, rect);
-        perfNote('waves', pw);
-        for (const c of shown) if (c.top) g.drawImage(c.top.canvas, c.i * CHUNK_W, c.j * CHUNK_H);
+        const c = chunk(i, j), x = i * CHUNK_W, y = j * CHUNK_H;
+        if (!c.wet) { g.drawImage(c.canvas, x, y); continue; }
+        if (c.tick !== tick) {                          // re-composite ground + water, WAVE_HZ times a second
+          const pw = perf ? performance.now() : 0;
+          c.tick = tick;
+          c.comp.g.clearRect(x, y, CHUNK_W, CHUNK_H);
+          c.comp.g.drawImage(c.canvas, x, y);
+          drawWater(c.comp.g, c.water, t);
+          perfNote('waves', pw);
+        }
+        g.drawImage(c.comp.canvas, x, y);
+        if (c.top) g.drawImage(c.top.canvas, x, y);
       }
       for (let i = i0 - 1; i <= i1 + 1; i++) for (let j = j0 - 1; j <= j1 + 1; j++) {
         if (!chunks.has(i + ',' + j) && i >= 0 && j >= 0 && i * CHUNK_W < W && j * CHUNK_H < H) {
@@ -2766,7 +2775,8 @@
         const near = Math.hypot(hero.pos[0] - g.pos[0], hero.pos[1] - g.pos[1]) < 1.6 ||
           (g.cycle !== undefined && (clock + g.cycle) % 11 < 3.5);                // a car let through
         g.open = Math.min(1, Math.max(0, g.open + (near ? dt : -dt) / GATE_S));
-        g.box = g.open > 0.5 ? g.post : g.shut;
+        const box = g.open > 0.5 ? g.post : g.shut;
+        if (box !== g.box) { g.box = box; g.front = null; }
       }
       buckets = new Map();
       for (const car of cars) {
@@ -3102,6 +3112,8 @@
       return [px - pivot[0], by - pivot[1], cell[0], cell[1] + 4 + (py - by)];
     }
 
+    const front = [];                                  // scratch: what to redraw over a car
+    let mmDrawn = -1;
     function render() {
       let pt = perf ? performance.now() : 0;
       const pt0 = pt;
@@ -3118,13 +3130,14 @@
       for (const a of animated) {
         if (a.sky || !overlap(a.rect, inView)) continue;
         a.draw(ctx);
-        const front = [...hash.query(a.rect)].filter(st => drawsBefore(a, st)).sort(byOrder);
-        if (!front.length) continue;
+        // What stands in front never moves: listed once (gates reset it).
+        if (!a.front) a.front = [...hash.query(a.rect)].filter(st => drawsBefore(a, st)).sort(byOrder);
+        if (!a.front.length) continue;
         ctx.save();
         ctx.beginPath();
         ctx.rect(...a.rect);
         ctx.clip();
-        front.forEach(st => st.draw(ctx));
+        for (const st of a.front) st.draw(ctx);
         ctx.restore();
       }
       pt = perfNote('animated', pt);
@@ -3155,14 +3168,15 @@
         // Diagonal neighbours (each behind the other along one axis) only
         // overlap where the car's sprite overhangs its footprint, in front of
         // the face it crosses, so they aren't redrawn over it.
-        const front = [...hash.query(rect), ...animated.filter(a => !a.sky && overlap(a.rect, rect))]
-          .filter(st => drawsBefore(car, st) && !behind(st, car)).sort(byOrder);
+        front.length = 0;
+        for (const st of everything.query(rect)) if (!st.sky && drawsBefore(car, st) && !behind(st, car)) front.push(st);
         if (!front.length) continue;
+        front.sort(byOrder);
         ctx.save();
         ctx.beginPath();
         ctx.rect(...rect);
         ctx.clip();
-        front.forEach(st => st.draw(ctx));
+        for (const st of front) st.draw(ctx);
         ctx.restore();
       }
 
@@ -3179,7 +3193,7 @@
         if (f !== tiltFocus) root.style.setProperty('--tilt-focus', (tiltFocus = f) + '%');
       }
       pt = perfNote('sky', pt);
-      drawMinimap();
+      if (clock - mmDrawn >= 1 / 30 || mmDrawn < 0) { mmDrawn = clock; drawMinimap(); }   // the phone at 30 Hz
       pt = perfNote('minimap', pt);
       if (perf) { perfNote('render', pt0); perfShow(); }
     }
