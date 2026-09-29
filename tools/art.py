@@ -778,7 +778,9 @@ def wall_shader(s, color, length_px, height_px, floors, windows, door=None, base
                 inw = (along >= a0 * length_px) & (along < a1 * length_px) & (z >= z0) & (z < z0 + 13)
                 if f == 0 and door is not None and a0 < door[1] and a1 > door[0]:
                     continue
-                edge = inw & ((along < a0 * length_px + 1) | (along >= a1 * length_px - 1) | (z < z0 + 1) | (z >= z0 + 12))
+                # Side frames 1.2 wide: a pixel column steps ~1.12 along the
+                # wall, so a 1-wide band could fall between two and vanish.
+                edge = inw & ((along < a0 * length_px + 1.2) | (along >= a1 * length_px - 1.2) | (z < z0 + 1) | (z >= z0 + 12))
                 glass = np.array(GLASS)[np.where((xs + ys) % 7 < 2, 3, (xs // 2 + ys) % 3)]
                 out = np.where(inw[:, None], glass, out)
                 out = np.where(edge[:, None], frame_c, out)
