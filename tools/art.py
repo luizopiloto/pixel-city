@@ -1414,11 +1414,12 @@ def school(seed):
                 (0.43, 0.57))
     cornice(s, x0, y0, a, b, hgt)
     flat_roof(s, x0, y0, a, b, hgt + 1, "#5b5a5c", units=0)
-    # Entrance: two columns and a pediment over the door.
+    # Entrance: two columns and a pediment over the door, low enough that
+    # the pediment stays under the upstairs windows' sills.
     px0, pw = x0 + a * 0.4, a * 0.2
-    column_row(s, px0 + 0.03, px0 + pw - 0.03, y0 + b + 0.16, 0, 30, 2)
-    s.box(px0, y0 + b, 30, pw, 0.2, 4, flat(s, "#e0d8c8"), flat(s, "#cfc6b6"), flat(s, "#b8b0a2"))
-    gable(s, px0, y0 + b, pw, 0.2, 34, 9, ramp("#cfc6b6", "#c4baa8"), "#e0d8c8", "v", 0.02)
+    column_row(s, px0 + 0.03, px0 + pw - 0.03, y0 + b + 0.16, 0, 26, 2)
+    s.box(px0, y0 + b, 26, pw, 0.2, 4, flat(s, "#e0d8c8"), flat(s, "#cfc6b6"), flat(s, "#b8b0a2"))
+    gable(s, px0, y0 + b, pw, 0.2, 30, 7, ramp("#cfc6b6", "#c4baa8"), "#e0d8c8", "v", 0.02)
     wall_sign(s, x0 + a / 2, y0 + b - 0.05, hgt + 1, 0.56, "SCHOOL", "#3a5a4a", "#e8e0cc")
     # Bell cupola on the roof.
     cx, cy = x0 + a * 0.5 - 0.1, y0 + b * 0.3
