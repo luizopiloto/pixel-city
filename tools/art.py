@@ -1808,6 +1808,52 @@ def disk(s, r, z, shader, n=20, cx=0.0, cy=0.0):
         s.face((cx, cy, z), (xa, ya, 0), (xb, yb, 0), shader, tri=True)
 
 
+def lathe(s, prof, color_for, n=32, cx=0.0, cy=0.0, seams=(2, 2), seam_k=0.9, grain=3.0):
+    """Surface of revolution through prof [(r, z), ...] from the bottom up:
+    n sectors of two triangles each, shaded smoothly (the light at each
+    vertex from the surface's facing there, blended across the triangles),
+    with dim seams along every seams[0]-th sector edge and seams[1]-th ring
+    as the only hint of the polygons. color_for(k, j) is facet (k, j)'s rgb."""
+    m = len(prof) - 1
+    seg = []                                                       # each segment's (radial, up) normal
+    for j in range(m):
+        (r0, z0), (r1, z1) = prof[j], prof[j + 1]
+        dr, dz = (r1 - r0) * 71.6, z1 - z0
+        L = math.hypot(dr, dz) or 1
+        seg.append((dz / L, -dr / L))
+    nrm = [seg[0]] + [((seg[j - 1][0] + seg[j][0]) / 2, (seg[j - 1][1] + seg[j][1]) / 2) for j in range(1, m)] + [seg[-1]]
+    ang = [2 * math.pi * k / n for k in range(n + 1)]
+
+    def lit(k, j):
+        t = ang[k]
+        side = 0.62 + 0.28 * max(0.0, math.sin(t)) + 0.12 * max(0.0, math.cos(t))
+        nr, nu = nrm[j]
+        w = nr * nr + nu * nu or 1
+        return (side * nr * nr + LIGHT["top"] * max(nu, 0) ** 2 + side * min(nu, 0) ** 2) / w
+    P = lambda k, j: (cx + prof[j][0] * math.cos(ang[k]), cy + prof[j][0] * math.sin(ang[k]), prof[j][1])
+
+    def tri(v0, v1, v2, l0, l1, l2, base, seam_a, seam_b):
+        g = [sum(c) / 3 for c in zip(v0, v1, v2)]                  # grown 2% about the middle: no seams
+        v0, v1, v2 = ([g[i] + (v[i] - g[i]) * 1.02 for i in range(3)] for v in (v0, v1, v2))
+        e1, e2 = [v1[i] - v0[i] for i in range(3)], [v2[i] - v0[i] for i in range(3)]
+
+        def sh(a, b, xs, ys):
+            light = l0 + (l1 - l0) * a + (l2 - l0) * b
+            out = base[None] * light[:, None] + (s.grain[ys, xs] - 0.5)[:, None] * grain
+            seam = (a < seam_a) | (b < seam_b)
+            return np.where(seam[:, None], out * seam_k, out)
+        s.face(tuple(v0), tuple(e1), tuple(e2), sh, tri=True, light=1.0)
+    for j in range(m):
+        for k in range(n):
+            p00, p01, p10, p11 = P(k, j), P(k + 1, j), P(k, j + 1), P(k + 1, j + 1)
+            base = np.asarray(color_for(k, j), float)
+            w1 = math.dist(s.proj(*p00), s.proj(*p01)) or 1           # facet size on screen, for 1-px seams
+            w2 = math.dist(s.proj(*p00), s.proj(*p10)) or 1
+            tri(p00, p01, p10, lit(k, j), lit(k + 1, j), lit(k, j + 1), base,
+                1 / w1 if k % seams[0] == 0 else -1, 1 / w2 if j % seams[1] == 0 else -1)
+            tri(p11, p10, p01, lit(k + 1, j + 1), lit(k, j + 1), lit(k + 1, j), base, -1, -1)
+
+
 def lighthouse(seed):
     """Classic lighthouse: stone plinth, a tapering white tower with red
     bands, a gallery with a railing, the lit lantern and a red cap. Returns
@@ -3283,7 +3329,8 @@ def bottle_tex(W=16, H=26):
         if 13 < y < 18:
             t[y, cx - w:cx + w] = [*rgb("#f0ece4"), 255]
     t[0:2, cx - 2:cx + 2] = [*rgb("#c8402a"), 255]
-    t[8:, cx + 2:cx + 3] = [*rgb("#8a5a3a"), 255]
+    for y0, y1 in ((10, 14), (18, H - 1)):                   # glass shine on the lit side, not over the label
+        t[y0:y1, cx - 3] = [*rgb("#6a3a28"), 255]
     return t
 
 
@@ -3404,8 +3451,7 @@ def water_tower(seed):
             p, q = s.proj(ax, ay, z), s.proj(bx, by, z)
             s.line(p, q, rgb("#716f74"), 0.2)
     tank(s, 0, 0, 0.32, 36, "#b8c4cc", "#8e98a0", z0=80)
-    for k in range(6):                                              # cone
-        ring(s, 0.32 - k * 0.05, 116 + k * 3, 3, lambda i: flat(s, "#8e98a0", 3), n=16)
+    lathe(s, [(0.34, 116), (0.17, 125), (0.0, 133)], lambda k, j: rgb("#8e98a0"), n=16, seams=(2, 9), seam_k=0.88)   # cone
     s.outline(0.78)
     return s
 
@@ -3642,14 +3688,11 @@ def cooling_tower(seed, R=1.15, H=170):
         for da in (-0.05, 0.05):
             x, y = R * math.cos(a + da), R * math.sin(a + da)
             s.line(s.proj(x, y, 0), s.proj(x * 0.99, y * 0.99, 12), rgb("#bdb3a2"), x + y + 0.02)
-    for z in range(12, H, 5):
-        r = shell(z)
-        base = rgb("#d8d4cc") * (1.0 if (z // 5) % 2 else 0.965)
-        wear = min(1.0, (H - z) / 60)                                           # streaks fade downward
-        def face_sh(k, base=base, wear=wear):
-            c = base * (0.86 if streaks[k] and wear < 1 else 1.0) if z > H - 60 else base
-            return flat(s, c, 4)
-        ring(s, r, z, 6, face_sh, n=28)
+    zs = list(range(12, H, 8)) + [H - 4]
+    base = rgb("#d8d4cc")
+    # Weathering: some sectors streaked down from the lip, fading downward.
+    color = lambda k, j: base * (1 - 0.05 * max(0.0, 1 - (H - zs[j]) / 60)) if streaks[k] else base
+    lathe(s, [(shell(z), z) for z in zs], color, n=28, seams=(4, 3), seam_k=0.93)
     rt = shell(H)
     ring(s, rt + 0.02, H - 4, 5, lambda k: flat(s, "#a69c8c", 3), n=28)       # lip
     disk(s, rt, H + 1, flat(s, "#3a3a3e", 2), n=28)
@@ -3686,11 +3729,8 @@ def reactor(seed):
                                                       rgb("#dcd4c4") * (0.97 + 0.06 * b_[:, None])))
     ring(s, R, 4, H - 4, drum, n=28)
     ring(s, R + 0.02, H - 3, 4, lambda k: flat(s, "#bdb3a2", 3), n=28)
-    for k in range(10):                                        # dome in panels
-        t0 = k / 10
-        r = R * math.cos(t0 * math.pi / 2)
-        tone = rgb("#e4dccc") * (1.0 if k % 3 else 0.95)
-        ring(s, max(r, 0.05), H + math.sin(t0 * math.pi / 2) * 46, 5, lambda i, tone=tone: flat(s, tone * (0.97 if i % 4 == 0 else 1.0), 3), n=28)
+    dome = [(R * math.cos(t * math.pi / 2), H + math.sin(t * math.pi / 2) * 46) for t in np.linspace(0, 1, 10)]
+    lathe(s, dome, lambda k, j: rgb("#e4dccc"), n=28, seams=(2, 3), seam_k=0.92)     # dome in panels
     s.blob((0, 0, H + 48), 5, ramp("#c8c2b6", "#e0d8c8", "#f0ece4"), squash=0.6)
     s.box(-0.14, R - 0.05, 24, 0.28, 0.06, 18, *(flat(s, c) for c in ("#8e8680", "#76706a", "#6a645e")))   # equipment hatch
     s.box(-0.35, R - 0.02, 4, 0.7, 0.42, 30, flat(s, "#bdb3a2"),

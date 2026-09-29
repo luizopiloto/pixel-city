@@ -2161,12 +2161,12 @@
  },
  "industry/water-tower.png": {
   "size": [
-   60,
-   151
+   62,
+   147
   ],
   "anchor": [
-   30,
-   137
+   31,
+   133
   ]
  },
  "industry/cell-tower.png": {
@@ -2216,11 +2216,11 @@
  "nuclear/cooling-tower.png": {
   "size": [
    209,
-   261
+   260
   ],
   "anchor": [
    104,
-   208
+   207
   ],
   "footprint": [
    2.3,
@@ -2245,11 +2245,11 @@
  "nuclear/reactor.png": {
   "size": [
    213,
-   188
+   183
   ],
   "anchor": [
    109,
-   138
+   133
   ],
   "footprint": [
    2.1399999999999997,
