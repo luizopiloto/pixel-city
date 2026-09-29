@@ -1408,7 +1408,7 @@ def school(seed):
     a, b, fh, floors = 1.8, 1.0, 30, 2
     x0, y0 = -a / 2, -b / 2
     hgt = floors * fh + 4
-    civic_walls(s, x0, y0, a, b, hgt, floors, fh, "#7d4a3e", "brick", spans(6, skip=(2, 3)), spans(3),
+    civic_walls(s, x0, y0, a, b, hgt, floors, fh, "#7d4a3e", "brick", spans(6), spans(3),
                 (0.43, 0.57))
     cornice(s, x0, y0, a, b, hgt)
     flat_roof(s, x0, y0, a, b, hgt + 1, "#5b5a5c", units=0)
