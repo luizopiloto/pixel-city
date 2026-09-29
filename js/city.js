@@ -1622,7 +1622,7 @@
       'buildings/brick-4.png': [0, 0, 0, CANOPY], 'buildings/hotel.png': [0, 0, 0, CANOPY], 'civic/hospital.png': [0, 0, 0, 0.5], 'nuclear/reactor.png': [0, 0, 0, 0.3], 'nuclear/turbine-hall.png': [0, 0.55, 0, 0.3], 'landmarks/tv-station.png': [0, 0, 0, 0.36], 'houses/diner.png': [0, 0.18, 0, 0],
       'buildings/fastfood.png': [0, 0.34, 0, 0], 'buildings/bistro.png': [0, 0.58, 0, 0], 'buildings/apartment-2.png': [0, 0.22, 0, 0.3],
       'civic/church.png': [0.04, 0.04, 0, 0.36], 'civic/bank.png': [0, 0, 0, 0.36],
-      'industry/brick-factory.png': [0, 0.1, 0, 0.1], 'civic/post-office.png': [0.3, 0, 0, 0.12], 'civic/school.png': [0.3, 0, 0, 0.12], 'civic/customs.png': [0.3, 0.3, 0, 0.14],
+      'industry/brick-factory.png': [0, 0.1, 0, 0.1], 'civic/post-office.png': [0.3, 0, 0, 0.12], 'civic/school.png': [0.3, 0, 0, 0.12], 'civic/customs.png': [0.34, 0, 0, 0.45],
     };
     const keepouts = [], doors = [];
     for (const lot of lots) {
@@ -1661,6 +1661,16 @@
       }
     }
     props.push(...late);
+    // Flagpoles by some civic buildings' front left corner, from the
+    // footprint's -u, +v corner; the flags all fly toward -u, off the walls.
+    const FLAGS = { 'civic/school.png': [[-0.02, 0.1]], 'civic/post-office.png': [[-0.02, 0.1]],
+      'civic/customs.png': [[-0.02, 0.12], [-0.02, 0.42]] };
+    for (const [kind, u0, , , v1] of lots) {
+      for (const [du, dv] of (kind.startsWith('art:') && FLAGS[kind.slice(4)]) || []) {
+        const u = u0 + du, v = v1 + dv;
+        props.push(['art/civic/flag.png', u, v, [u - 0.31, u + 0.02, v - 0.02, v + 0.02]]);
+      }
+    }
     // Drawn over the TV station, just in front of it in paint order.
     if (tvLed) for (const n of ['ads-side', 'ads-front', 'lift']) props.push([`art/landmarks/tv-${n}.png`, tvLed[0], tvLed[1],
       [tvLed[0] + 0.6, tvLed[0] + 0.7, tvLed[1] + 0.6, tvLed[1] + 0.7]]);
@@ -2364,8 +2374,9 @@
         const item = { src, frames: m.frames, rect: [Math.round(x - ax), Math.round(y - ay), w, h],
           box: box || [u - a / 2, u + a / 2, v - b / 2, v + b / 2] };
         if (/smoke|steam/.test(src)) item.sky = true;  // up in the air: drawn after everything
+        const phase = src.includes('/flag') ? Math.floor(Math.abs(u * 3.7 + v * 5.3)) % item.frames : 0;   // flags out of step
         item.draw = c => {
-          const f = item.frameOf ? item.frameOf() : Math.floor(clock * ANIM_FPS) % item.frames;
+          const f = item.frameOf ? item.frameOf() : (Math.floor(clock * ANIM_FPS) + phase) % item.frames;
           c.drawImage(img[src], f * w, 0, w, h, item.rect[0], item.rect[1], w, h);
         };
         if (src.includes('parking/gate')) {            // raised as the hero comes near: open 0..1
