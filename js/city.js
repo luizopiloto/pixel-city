@@ -127,6 +127,7 @@
   const ROUTE_EDGES = [16, 24];
   const PARK_S = 5;
   const REFUEL_S = 10;       // seconds at the gas pump
+  const REVERSE = 0.45, BACK_PAUSE = 0.6;   // tiles / s backing into a stall, s paused before it
   const CURB = 0.48;         // parked hero's offset from the road center
   // The hero is a Supra (not in TYPES). No contact shadow: on this low, long
   // car it looked like a dark block beside it.
@@ -641,6 +642,11 @@
     // hero starts in one, and `lead` is its way out: along the aisle, out
     // through the exit lane, right onto the street (to -u).
     let parking = null;
+    // Car parks the hero stops in when a route ends beside them: `ring` the
+    // roads round the block, the way in from the street (T1 → T2, `entry`)
+    // past a stall kept free, `back` reversing into it, and the way out
+    // (`exitLead` onto the `exit` edge).
+    const lotStops = [];
     function parkingLot(sb) {
       const { u0, u1, v0, v1 } = sb, alongV = sb.bh > sb.bw, eu = u0 + 1;      // eu: the entrance column
       for (let u = u0; u < u1; u++) for (let v = v0; v < v1; v++) {
@@ -662,7 +668,7 @@
           if (u < eu || u > eu + 1) stalls.push({ u, v: v0 + 2.35, toAisle: [0, -1] });  // not the driveway
         }
       }
-      const hs = alongV ? stalls.find(t => t.u === u0 + 0.65 && t.v === v0 + 0.75)
+      const hs = alongV ? stalls.find(t => t.u === u0 + 0.65 && t.v === v0 + 1.25)
         : stalls.find(t => t.v === v0 + 0.65 && t.u === u0 + 4.25);
       const sign = [eu + 1.3, v1 - 0.22];          // PARK sign, inside the fence beside the entrance
       const cars = [];
@@ -695,6 +701,23 @@
       props.push(['art/parking/gate-l.png', eu + 0.02, v1 - 0.55], ['art/parking/gate-r.png', eu + 0.98, v1 - 0.55]);
       props.push(['art/parking/sign.png', ...sign, [sign[0] - 0.25, sign[0] + 0.25, sign[1] - 0.03, sign[1] + 0.03]]);
       parking = { cars, lead, behind: [sb.bi + 1, sb.bj + sb.bh], ahead: [sb.bi, sb.bj + sb.bh], area: [u0, u1, v0, v1] };
+      // Back in the hero's own stall: in through the entry lane, past the
+      // stall, then reversing into it.
+      const entry = [];
+      fillet(entry, [eu + 0.5, v1 + 0.5], [-1, 0], [0, -1]);
+      let back;
+      if (alongV) {
+        const P = [eu + 0.5 + LANE, hs.v - 0.7];
+        entry.push(P);
+        back = curve(P, [P[0], lead[0][1]], lead[0]);            // ending where the way out starts
+      } else {
+        fillet(entry, [eu + 0.5, v0 + 1.5], [0, -1], [1, 0]);
+        const P = [hs.u + 0.9, v0 + 1.5 + LANE];
+        entry.push(P);
+        back = curve(P, [lead[0][0], P[1]], lead[0]);
+      }
+      lotStops.push({ ring: [u0 - 1, u1, v0 - 1, v1], T1: parking.behind, T2: parking.ahead, noFrom: [-1, -1],
+        entry, back, exit: [parking.behind, parking.ahead], exitLead: lead });
     }
 
     // TV station (one 2×2 downtown block): the studio under its lattice
@@ -747,9 +770,10 @@
       artProp('cats/boxes.png', u0 + 4.6, v0 + 1.55);
       artProp('cats/boxes.png', u0 + 4.75, v0 + 2.0);
       // Parked cars in the lot, nose to the aisle (row v0+4).
-      const cars = [];
+      const cars = [], su = u0 + 2.75, sv = v0 + 3.65;          // (su, sv): kept free for the hero
       for (let k = 0; k < 10; k++) {
         for (const [v, dir] of [[v0 + 3.65, 1], [v0 + 5.35, -1]]) {
+          if (v === sv && k === 5) continue;
           if (rng() < 0.45) cars.push({ u: u0 + 0.25 + k * 0.5, v, head: [0, rng() < 0.3 ? -dir : dir], type: pick(TYPES) });
         }
       }
@@ -757,20 +781,34 @@
       const entry = [];
       fillet(entry, [u0 + 6.5, vr + 0.5], [-1, 0], [0, -1]);           // right, off the street
       entry.push([u0 + 6 + 0.5 + LANE, v0 + 4.55]);                     // to the pump
-      const exitLead = [[u0 + 6 + 0.5 + LANE, v0 + 4.45]];
+      const exitLead = [[u0 + 6 + 0.5 + LANE, v0 + 4.55]];    // from where the way in stops
       fillet(exitLead, [u0 + 6.5, v0 + 2.5], [0, -1], [1, 0]);          // right, across the forecourt
       fillet(exitLead, [ur + 0.5, v0 + 2.5], [1, 0], [0, -1]);          // left, onto the +u street heading -v
       // Two right turns a tile apart would overlap (a backward kink), so the
       // way in never turns right onto the +v street at T1 either (noFrom).
       gas = { cars, entry, exitLead, area: [u0, u0 + 5, v0 + 3, v0 + 6], T1: [bi + 2, bj + 2], T2: [bi + 1, bj + 2], noFrom: [bi + 2, bj + 1],
         exit: [[bi + 2, bj + 1], [bi + 2, bj]] };
+      // Shopping: in as to the pump, left along the mart's aisle past the
+      // free stall, backing into it; out along the aisle to the forecourt
+      // and on as from the pump.
+      const martIn = [];
+      fillet(martIn, [u0 + 6.5, vr + 0.5], [-1, 0], [0, -1]);
+      fillet(martIn, [u0 + 6.5, v0 + 4.5], [0, -1], [-1, 0]);
+      const P = [su - 0.9, v0 + 4.5 - LANE];
+      martIn.push(P);
+      const martOut = [[su, sv - 0.1]];
+      fillet(martOut, [su + LANE, v0 + 4.5], [0, 1], [1, 0]);
+      fillet(martOut, [u0 + 6.5, v0 + 4.5], [1, 0], [0, -1]);
+      martOut.push(...exitLead.slice(1));
+      lotStops.push({ ring: [u0 - 1, ur, v0 - 1, vr], T1: gas.T1, T2: gas.T2, noFrom: gas.noFrom, entry: martIn,
+        back: curve(P, [su, P[1]], martOut[0]), exit: gas.exit, exitLead: martOut });
     }
 
     // Nuclear plant (15 × 15 tiles): two cooling towers and the reactor along
     // the back, the turbine hall and substations in the middle, a staff car
     // park at the front, a fence all round with the gate and the atom sign.
     let nuclear = null;
-    function nuclearBlock({ u0, u1, v0, v1 }) {
+    function nuclearBlock({ u0, u1, v0, v1, bi, bj, bh }) {
       concrete(u0, v0, u1 - u0, v1 - v0);
       // Back: two cooling towers, two reactor units, guard towers at the
       // corners, the water tower; middle: the switchyard fed by pylons, the
@@ -804,10 +842,12 @@
       const ROWS = ['lot-lines-v-hi', 'lot', 'lot-lines-v-lo', 'lot-lines-v-hi', 'lot'];
       for (let u = u0; u < pu1; u++) for (let v = v0 + 10; v < v1; v++) setGround(u, v, 'art/ground/' + ROWS[v - v0 - 10]);
       const gcol = u0 + 3;                           // the checkpoint's three lanes: gcol .. gcol+2
+      const su = u0 + 7.25, sv = v0 + 13.65;         // kept free for the hero
       for (let k = 0; k < 18; k++) {
         const u = u0 + 0.25 + k * 0.5;
         for (const [v, dir] of [[v0 + 10.65, 1], [v0 + 12.35, -1], [v0 + 13.65, 1]]) {
           if (v > v0 + 13 && u > gcol - 0.2 && u < gcol + 3.2) continue;           // the lanes in, under the canopy
+          if (v === sv && k === 14) continue;
           if (rng() < 0.55) parkedCars.push({ u, v, head: [0, rng() < 0.3 ? -dir : dir], type: pick(TYPES) });
         }
       }
@@ -832,6 +872,19 @@
         props.push(['art/parking/fence-r1.png', u1 - 0.01, v, [u1 - 0.04, u1 - 0.01, v, v + 1]]);
       }
       nuclear = { area: [u0, u1, v0, v1] };
+      // A visit: in through the +u lane, right along the front aisle past the
+      // free stall, backing into it; out along the aisle, through the -u
+      // lane and right onto the street.
+      const J = bj + bh, inN = [], outN = [[su, sv - 0.1]];
+      fillet(inN, [gcol + 2.5 - LANE, v1 + 0.5], [-1, 0], [0, -1]);
+      fillet(inN, [gcol + 2.5 - LANE, v0 + 14.5 - LANE], [0, -1], [1, 0]);
+      const P = [su + 0.9, v0 + 14.5];
+      inN.push(P);
+      fillet(outN, [su + LANE, v0 + 14.5 + LANE], [0, 1], [-1, 0]);
+      fillet(outN, [gcol + 0.5 + LANE, v0 + 14.5 + LANE], [-1, 0], [0, 1]);
+      fillet(outN, [gcol + 0.5 + LANE, v1 + 0.5], [0, 1], [-1, 0]);
+      lotStops.push({ ring: [u0 - 1, u1, v0 - 1, v1], T1: [bi + 2, J], T2: [bi + 1, J], noFrom: [-1, -1], entry: inN,
+        back: curve(P, [su, P[1]], outN[0]), exit: [[bi + 1, J], [bi, J]], exitLead: outN });
     }
 
     // ----- industry and port -----
@@ -905,7 +958,7 @@
         const entry = [];
         fillet(entry, [u + 2.5, v + 3.5], [-1, 0], [0, -1]);
         entry.push([u + 2.5 + LANE, v + 1.65]);
-        const exitLead = [[u + 2.5 + LANE, v + 1.55]];
+        const exitLead = [[u + 2.5 + LANE, v + 1.65]];
         fillet(exitLead, [u + 2.5, v + 0.5], [0, -1], [1, 0]);
         fillet(exitLead, [u + 3.5, v + 0.5], [1, 0], [0, -1]);
         gasStops.push({ entry, exitLead, T1: [c.i + 1, c.j + 1], T2: [c.i, c.j + 1], noFrom: [c.i + 1, c.j],
@@ -1695,7 +1748,7 @@
     }
 
     return {
-      ground, isRoad, isLand, isWater, lighthouse, parking, gas, gasStops, nuclear, parkedCars, junction, lots, props, signals, signalAt, rng, pick,
+      ground, isRoad, isLand, isWater, lighthouse, parking, gas, gasStops, lotStops, nuclear, parkedCars, junction, lots, props, signals, signalAt, rng, pick,
       NU: nu, NV: nv, IU, IV, cells: cells.size,
       districts: districts.map(d => d.type), blockedDoors, blocked,
       cellList: [...cells.values()].map(c => [c.i, c.j, c.type, c.sup >= 0]),
@@ -1723,6 +1776,16 @@
         m * m * a[1] + 2 * m * t * c[1] + t * t * b[1],
       ]);
     }
+  }
+
+  // Quadratic curve from a to b, tangent to a → k at a and k → b at b.
+  function curve(a, k, b, n = 12) {
+    const out = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, m = 1 - t;
+      out.push([m * m * a[0] + 2 * m * t * k[0] + t * t * b[0], m * m * a[1] + 2 * m * t * k[1] + t * t * b[1]]);
+    }
+    return out;
   }
 
   const centers = corners => corners.map(([u, v]) => [u + 0.5, v + 0.5]);
@@ -2150,6 +2213,18 @@
     return buildPath(routeLane(from.tile, corners, end.tile, from.lead, tail), city.signalAt, city.ground, HERO_HALF,
       false, city.junction);
   }
+  // Car parks: a route ending on a road beside one goes on into it.
+  const lotStops = (city.lotStops || []).filter(d => edgeOk(d.T1, d.T2) && edgeOk(...d.exit));
+  const beside = (a, b, [u0, u1, v0, v1]) => {
+    const [au, av] = nodeTile(a), [bu, bv] = nodeTile(b);
+    if (av === bv) return (av === v0 || av === v1) && Math.min(au, bu) < u1 && Math.max(au, bu) > u0;
+    return (au === u0 || au === u1) && Math.min(av, bv) < v1 && Math.max(av, bv) > v0;
+  };
+  // Reversing: the heading points against the way along the path.
+  const reverse = pts => {
+    const p = buildPath(pts, city.signalAt, city.ground, HERO_HALF, false, city.junction);
+    return { ...p, heads: p.heads.map(([a, b]) => [-a, -b]), rev: true };
+  };
   function planRoute(from) {
     const gas = stations.length ? city.pick(stations) : null;          // one of the Cat's stations
     if (gas && !from.fromGas && city.rng() < REFUEL) {
@@ -2180,7 +2255,14 @@
     }
     const nodes = best.length > 1 ? best : [from.ahead, ...DIRS.map(o => [from.ahead[0] + o[0], from.ahead[1] + o[1]])
       .filter(nx => edgeOk(from.ahead, nx)).slice(0, 1)];
-    const end = spotOn(nodes[nodes.length - 2], nodes[nodes.length - 1]);
+    const last = [nodes[nodes.length - 2], nodes[nodes.length - 1]];
+    const lot = nodes.length > 1 && lotStops.find(d => beside(...last, d.ring));
+    const more = lot && toGas({ behind: last[0], ahead: last[1] }, lot);
+    if (more) {
+      return { path: routeThrough(from, [...nodes, ...more.slice(1)], spotOn(lot.T1, lot.T2), lot.entry),
+        back: reverse(lot.back), end: { ...spotOn(...lot.exit), lead: lot.exitLead } };
+    }
+    const end = spotOn(...last);
     return { path: routeThrough(from, nodes, end, null), end };
   }
   const firstSpot = (() => {
@@ -2865,7 +2947,7 @@
         car.atLight = atLight;
         if (!car.path.closed) gap = Math.min(gap, car.path.total - car.path.step - car.s);
         if (car.hold > 0) { car.hold -= dt; gap = 0; }
-        const target = Math.min(CRUISE, Math.sqrt(2 * DECEL * Math.max(0, gap)));
+        const target = Math.min(car.path.rev ? REVERSE : CRUISE, Math.sqrt(2 * DECEL * Math.max(0, gap)));
         car.speed = target > car.speed
           ? Math.min(target, car.speed + ACCEL * dt)
           : Math.max(target, car.speed - DECEL * dt);
@@ -2889,7 +2971,11 @@
         if (!car.hero && car.path.total - car.s < 3.5) extendWalk(car);
         if (car.hero && car.path.total - car.path.step - car.s < 0.02 && car.speed < 0.02) {
           car.parked += dt;
-          if (car.parked >= (heroRoute.end.fromGas ? REFUEL_S : PARK_S)) {
+          if (heroRoute.back) {                        // stopped past the stall: now back into it
+            if (car.parked >= BACK_PAUSE) {
+              car.path = heroRoute.back; heroRoute.back = null; car.s = 0; car.parked = 0; car.speed = 0;
+            }
+          } else if (car.parked >= (heroRoute.end.fromGas ? REFUEL_S : PARK_S)) {
             heroRoute = planRoute(heroRoute.end);
             car.path = heroRoute.path; car.s = 0; car.parked = 0; car.speed = 0;
           }
