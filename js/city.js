@@ -114,14 +114,14 @@
     'office-9', 'office-10', 'apartment-1', 'apartment-13', 'apartment-14', 'hotel'].map(n => `buildings/${n}.png`);
   const CANOPY = 0.38;                             // entrance canopy out from the front (brick-4, hotel)
   const CANOPIED = ['buildings/brick-4.png', 'buildings/hotel.png'];
-  const DOWNTOWN_SWAP = 0.55;                      // street-front plain lots that get a new building
+  const DOWNTOWN_SWAP = 0.8;                       // street-front plain lots that get a new building
   const HELIPAD_ODDS = 0.2;                        // glass offices with the helipad roof (office-5)
   const TREES = ['oak', 'oak-small', 'maple', 'birch', 'olive', 'pine', 'pine-small'].map(n => `nature/trees/${n}.png`);
   const CITY_TREES = ['oak', 'oak-small', 'maple', 'birch'].map(n => `nature/trees/${n}.png`);
   const BUSHES = ['bush', 'bush-small', 'bush-flowers', 'shrub'].map(n => `nature/bushes/${n}.png`);
   const GRASSES = ['grass-a', 'grass-a', 'grass-b', 'grass-lush', 'grass-flowers'].map(n => `art/ground/${n}`);
   // Regular 3×3 blocks, by template (relative weights).
-  const BLOCK_MIX = { twin: 12, row: 8, mixed: 8, plaza: 3, park: 7, canal: 2 };
+  const BLOCK_MIX = { twin: 12, row: 8, mixed: 8, plaza: 1, park: 7, canal: 2 };
   // Hero routes: random walks that never turn back or revisit a crossing,
   // ROUTE_EDGES blocks long. At the end the hero parks for PARK_S seconds.
   const ROUTE_EDGES = [16, 24];
@@ -550,7 +550,7 @@
       },
       row(u, v) {
         pave(u, v);
-        const empty = rng() < 0.25 ? Math.floor(rng() * 4) : -1;
+        const empty = rng() < 0.1 ? Math.floor(rng() * 4) : -1;
         [[0, 0], [1.5, 0], [0, 1.5], [1.5, 1.5]].forEach(([qu, qv], k) => {
           if (k === empty) nook(u + qu, v + qv);
           else lots.push([pick(BARE), u + qu, u + qu + 1.5, v + qv, v + qv + 1.5]);
@@ -617,14 +617,15 @@
         let u = sb.u0 + rest / 2;
         const v = v0 + r * (ROW + ALLEY);
         for (const w of cols) {
-          if (rng() < 0.3) {
-            prop(pick(PLANTERS), u + w / 2 - 0.3, v + 0.4);
-            prop('props/bench-ne.png', u + w / 2 + 0.2, v + 0.75);
+          if (rng() < 0.08) {                         // now and then a pocket garden
+            artProp(pick(CITY_TREES), u + w / 2 - 0.35, v + 0.45);
+            prop('props/bench-ne.png', u + w / 2 + 0.25, v + 0.8);
           } else {
-            // Half the lots get a new building that fits (no canopy: the
-            // alley in front is too narrow), at the lot's front.
+            // Most narrow lots get a new building that fits (no canopy: the
+            // alley in front is too narrow), at the lot's front; wide ones
+            // mostly a wide older building, which fills them.
             const fits = DOWNTOWN_ART.filter(n => !CANOPIED.includes(n) && fp(n)[0] <= w - 0.1 && fp(n)[1] <= ROW - 0.05);
-            if (fits.length && rng() < 0.5) {
+            if (fits.length && rng() < (w > 2 ? 0.35 : 0.85)) {
               const n = pick(fits);
               artLot(n, u + w / 2, v + ROW - 0.03 - fp(n)[1] / 2);
             } else lots.push([w > 2 ? pickDressed() : pick(BARE), u, u + w, v, v + ROW]);
