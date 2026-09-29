@@ -1362,9 +1362,11 @@ def pyramid(s, x0, y0, sx, sy, z, h, roof):
         s.face(o, np.subtract(q, o), np.subtract(apex, o), rows, tri=True, light=light)
 
 
-def flagpole(s, x, y, h=62, colors=("#3a5a7a", "#d8ccb4", "#3a5a7a")):
+def flagpole(s, x, y, h=62, colors=("#3a5a7a", "#d8ccb4", "#3a5a7a"), dir=1):
+    """A pole at (x, y) whose flag flies along u (dir -1: toward -u, off a
+    building's left corner), drooping a little at the free end."""
     s.box(x - 0.008, y - 0.008, 0, 0.016, 0.016, h, flat(s, "#d8d4dc"), flat(s, "#b3afbd"), flat(s, "#8e8897"))
-    s.face((x + 0.01, y, h - 12), (0.17, 0, 0), (0, 0, 9), banded(s, [rgb(c) for c in colors], 3, axis=1), light=0.95)
+    s.face((x + 0.01 * dir, y, h - 14), (0.27 * dir, 0, -2), (0, 0, 12), banded(s, [rgb(c) for c in colors], 3, axis=1), light=0.95)
     s.blob((x, y, h + 1), 1.4, ramp("#8a6a2e", "#c9a84a", "#f2c06a"))
 
 
@@ -1421,7 +1423,7 @@ def school(seed):
     s.box(cx, cy, hgt + 1, 0.2, 0.2, 13, flat(s, "#e0d8c8"),
           wall_shader(s, "#e0d8c8", 14, 13, 1, [], (0.3, 0.7)), wall_shader(s, "#e0d8c8", 14, 13, 1, [], (0.3, 0.7)))
     pyramid(s, cx - 0.02, cy - 0.02, 0.24, 0.24, hgt + 14, 11, SLATE)
-    flagpole(s, x0 - 0.02, y0 + b + 0.1)
+    flagpole(s, x0 - 0.02, y0 + b + 0.1, dir=-1)
     s.outline(0.7)
     return s, (a, b)
 
@@ -1572,7 +1574,7 @@ def post_office(seed):
     mx, my = x0 + a * 0.66, y0 + b + 0.1
     s.box(mx, my, 0, 0.08, 0.07, 11, flat(s, "#34486a"), flat(s, "#2c3e5c"), flat(s, "#243350"))
     s.blob((mx + 0.04, my + 0.035, 11), 3.2, ramp("#1f2c44", "#2c3e5c", "#34486a", "#45608a"), squash=0.6)
-    flagpole(s, x0 - 0.02, y0 + b + 0.1)
+    flagpole(s, x0 - 0.02, y0 + b + 0.1, dir=-1)
     s.outline(0.7)
     return s, (a, b)
 
@@ -3118,8 +3120,8 @@ def customs(seed):
     flat_roof(s, x0, y0, a, b, hgt + 1, "#5b5a5c", units=2)
     wall_sign(s, x0 + a * 0.5, y0 + b, 36, 0.62, "CUSTOMS", "#2c3548", "#e8e0cc", 12)
     s.box(x0 + a * 0.4, y0 + b, 0, a * 0.2, 0.2, 3, *(flat(s, c) for c in ("#e0d8c8", "#c9bfae", "#b3a998")))
-    for fx in (x0 + 0.1, x0 + a - 0.1):
-        flagpole(s, fx, y0 + b + 0.12, 70)
+    for fx, d in ((x0 - 0.02, -1), (x0 + a + 0.02, 1)):
+        flagpole(s, fx, y0 + b + 0.12, 70, dir=d)
     s.outline(0.7)
     return s, (a, b)
 

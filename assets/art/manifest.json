@@ -1955,11 +1955,11 @@
  },
  "civic/customs.png": {
   "size": [
-   218,
-   178
+   241,
+   182
   ],
   "anchor": [
-   109,
+   132,
    124
   ],
   "footprint": [
@@ -3270,11 +3270,11 @@
  },
  "civic/school.png": {
   "size": [
-   192,
+   208,
    157
   ],
   "anchor": [
-   99,
+   115,
    112
   ],
   "footprint": [
@@ -3318,11 +3318,11 @@
  },
  "civic/post-office.png": {
   "size": [
-   167,
+   183,
    143
   ],
   "anchor": [
-   86,
+   102,
    105
   ],
   "footprint": [
