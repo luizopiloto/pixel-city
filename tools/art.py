@@ -3135,18 +3135,41 @@ def sawtooth_factory(seed, a=3.4, b=1.8, floors=2):
     fh = 34
     hgt = floors * fh + 4
     x0, y0 = -a / 2, -b / 2
-    civic_walls(s, x0, y0, a, b, hgt, floors, fh, "#8a4a3e", "brick", spans(12), spans(6), (0.47, 0.53),
-                "arched", "#e0d8c8", None)
+    # Windows only where the corner tower (below) leaves wall showing.
+    tower = 0.42
+    fv, fu = (a - tower) / a, (b - tower) / b
+    scale = lambda sp, f: [(lo * f, hi * f) for lo, hi in sp]
+    civic_walls(s, x0, y0, a, b, hgt, floors, fh, "#8a4a3e", "brick", scale(spans(10), fv), scale(spans(5), fu),
+                (fv / 2 - 0.03, fv / 2 + 0.03), "arched", "#e0d8c8", None)
     cornice(s, x0, y0, a, b, hgt, "#bdb3a2")
-    n = 6
-    for k in range(n):                                              # sawtooth: glazed steep side, slate slope
-        sx = x0 + k * a / n
-        s.face((sx, y0, hgt), (0, b, 0), (0, 0, 16), lambda a_, b_, xs, ys: np.array(GLASS)[(xs + ys) % 4] * 1.1, light=0.9)
-        s.face((sx, y0, hgt + 16), (0, b, 0), (a / n, 0, -16), flat(s, "#5b5a5c", 4), light=1.0)
-        s.face((sx, y0 + b, hgt), (a / n, 0, 0), (0, 0, 16), flat(s, "#8a4a3e", 6), tri=True, light=LIGHT["v"])
-    s.box(x0 + a - 0.45, y0 + b - 0.4, 0, 0.4, 0.4, hgt + 30, flat(s, "#6e3a30"),
-          wall_shader(s, "#8a4a3e", 0.4 * 71.6, hgt + 30, 3, spans(1), None, None, "brick", floor_h=30),
-          wall_shader(s, "#8a4a3e", 0.4 * 71.6, hgt + 30, 3, spans(1), None, None, "brick", floor_h=30))
+    # Sawtooth roof: each tooth's slope rises toward +u to a glazed north
+    # light facing the camera. Slopes are lapped metal sheets in courses
+    # along the ridge (they draw as clean iso lines), under a light ridge
+    # cap; the glass has steel mullions.
+    n, rise = 6, 16
+    tw = a / n
+    seam = lambda a_, b_, xs, ys: (np.where((np.mod(b_ * tw * 71.6, 5) < 1)[:, None], rgb("#6a6970"), rgb("#57565c"))
+                                   * np.where((b_ > 0.93)[:, None], 1.25, 1.0) + (s.grain[ys, xs] - 0.5)[:, None] * 5)
+
+    def lights(a_, b_, xs, ys):
+        along, z = a_ * b * 71.6, b_ * rise
+        mullion = (np.mod(along, 6) < 1) | (z < 1.5) | (z > rise - 1.5) | (np.abs(z - rise / 2) < 0.6)
+        glass = np.array(GLASS)[np.where((xs + ys) % 7 < 2, 3, (xs // 2 + ys) % 3)] * 1.1
+        return np.where(mullion[:, None], rgb("#4a4a50"), glass)
+    for k in range(n):
+        sx = x0 + k * tw
+        s.face((sx, y0, hgt), (0, b, 0), (tw, 0, rise), seam, light=1.0)
+        s.face((sx + tw, y0, hgt), (0, b, 0), (0, 0, rise), lights, light=LIGHT["u"])
+        s.face((sx + tw, y0 + b, hgt), (-tw, 0, 0), (0, 0, rise), flat(s, "#8a4a3e", 6), tri=True, light=LIGHT["v"])
+        s.box(sx + tw - 0.02, y0 - 0.02, hgt + rise, 0.04, b + 0.04, 2, *(flat(s, c, 3) for c in ("#8e8d94", "#77767d", "#65646a")))
+    # Stair tower on the front corner, standing proud of both walls so
+    # neither cuts into it, rising well over the roof.
+    tx, ty, tw_, th = x0 + a - tower, y0 + b - tower, tower + 0.08, hgt + 52
+    tower_wall = wall_shader(s, "#8a4a3e", tw_ * 71.6, th, 4, spans(1, 0.3, 0.7), None, None, "brick", frame="#e0d8c8",
+                             window_style="arched", floor_h=31)
+    s.box(tx, ty, 0, tw_, tw_, th, flat(s, "#6e3a30"), tower_wall, tower_wall)
+    cornice(s, tx, ty, tw_, tw_, th, "#bdb3a2")
+    pyramid(s, tx - 0.03, ty - 0.03, tw_ + 0.06, tw_ + 0.06, th + 1, 22, SLATE)
     s.outline(0.7)
     return s, (a, b)
 

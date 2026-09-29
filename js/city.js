@@ -1622,7 +1622,7 @@
       'buildings/brick-4.png': [0, 0, 0, CANOPY], 'buildings/hotel.png': [0, 0, 0, CANOPY], 'civic/hospital.png': [0, 0, 0, 0.5], 'nuclear/reactor.png': [0, 0, 0, 0.3], 'nuclear/turbine-hall.png': [0, 0.55, 0, 0.3], 'landmarks/tv-station.png': [0, 0, 0, 0.36], 'houses/diner.png': [0, 0.18, 0, 0],
       'buildings/fastfood.png': [0, 0.34, 0, 0], 'buildings/bistro.png': [0, 0.58, 0, 0], 'buildings/apartment-2.png': [0, 0.22, 0, 0.3],
       'civic/church.png': [0.04, 0.04, 0, 0.36], 'civic/bank.png': [0, 0, 0, 0.36],
-      'civic/post-office.png': [0.3, 0, 0, 0.12], 'civic/school.png': [0.3, 0, 0, 0.12], 'civic/customs.png': [0.3, 0.3, 0, 0.14],
+      'industry/brick-factory.png': [0, 0.1, 0, 0.1], 'civic/post-office.png': [0.3, 0, 0, 0.12], 'civic/school.png': [0.3, 0, 0, 0.12], 'civic/customs.png': [0.3, 0.3, 0, 0.14],
     };
     const keepouts = [], doors = [];
     for (const lot of lots) {

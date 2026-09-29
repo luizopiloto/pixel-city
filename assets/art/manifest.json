@@ -1972,11 +1972,11 @@
  "industry/brick-factory.png": {
   "size": [
    340,
-   254
+   246
   ],
   "anchor": [
    170,
-   171
+   158
   ],
   "footprint": [
    3.4,
