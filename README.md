@@ -67,10 +67,13 @@ is heading, in the time left after a frame is painted.
 `plasma-wallpaper/` is a KDE Plasma 6 wallpaper plugin, **Web Paper**, that
 shows a web page as the desktop background: Pixel City by default. It pauses
 while a maximized or full-screen window covers the screen, keeps the page's
-cache and storage between sessions, and retries if the page fails to load
-(details in [its README](plasma-wallpaper/README.md)).
+cache and storage between sessions (per screen), retries if the page fails to
+load, and keeps the page from opening dialogs, windows or other sites, asking
+for permissions or downloading (details in
+[its README](plasma-wallpaper/README.md)).
 
-**Needs** Plasma 6 and Qt WebEngine for QML:
+**Needs** Plasma 6 (Qt 6.8 or newer, as in Plasma 6.4 and later) and Qt
+WebEngine for QML:
 
 | Distribution | Package |
 | --- | --- |

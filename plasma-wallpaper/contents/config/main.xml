@@ -16,5 +16,9 @@
         <entry name="PauseWhenCovered" type="Bool">
             <default>true</default>
         </entry>
+        <!-- Drawn at random the first time: this screen's storage on disk -->
+        <entry name="StorageId" type="String">
+            <default></default>
+        </entry>
     </group>
 </kcfg>

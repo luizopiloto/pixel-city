@@ -11,11 +11,15 @@ Kirigami.FormLayout {
     property alias cfg_ReloadSeconds: reloadSpin.value
     property alias cfg_PauseWhenCovered: pauseBox.checked
 
-    // Os padrões (o Plasma os preenche; sem eles, avisos no log)
+    // The defaults (Plasma fills them in; without them it logs warnings)
     property string cfg_UrlDefault
     property real cfg_ZoomDefault
     property int cfg_ReloadSecondsDefault
     property bool cfg_PauseWhenCoveredDefault
+
+    // Zoom is a real and the box an integer percent: follow the value when it
+    // changes from outside too (the Defaults button).
+    onCfg_ZoomChanged: zoomSpin.value = Math.round(cfg_Zoom * 100)
 
     QQC2.TextField {
         id: urlField
@@ -29,7 +33,7 @@ Kirigami.FormLayout {
         wrapMode: Text.Wrap
         font: Kirigami.Theme.smallFont
         opacity: 0.75
-        text: "Pixel City: acrescente ?quality=low em computadores fracos, ?seed=123 para sempre a mesma cidade."
+        text: "Pixel City: add ?quality=low on a slow computer, ?seed=123 for the same city every time."
     }
 
     QQC2.SpinBox {
@@ -48,21 +52,21 @@ Kirigami.FormLayout {
         wrapMode: Text.Wrap
         font: Kirigami.Theme.smallFont
         opacity: 0.75
-        text: "Pixel art fica nítida em múltiplos inteiros: 100%, 200%, 300%."
+        text: "Pixel art stays sharp at whole multiples: 100%, 200%, 300%."
     }
 
     QQC2.SpinBox {
         id: reloadSpin
-        Kirigami.FormData.label: "Recarregar a cada:"
+        Kirigami.FormData.label: "Reload every:"
         from: 0; to: 86400; stepSize: 60
         editable: true
-        textFromValue: (v, locale) => v === 0 ? "nunca" : v + " s"
+        textFromValue: (v, locale) => v === 0 ? "never" : v + " s"
         valueFromText: (text, locale) => parseInt(text) || 0
     }
 
     QQC2.CheckBox {
         id: pauseBox
-        Kirigami.FormData.label: "Economia:"
-        text: "Pausar sob janelas maximizadas ou em tela cheia"
+        Kirigami.FormData.label: "Power saving:"
+        text: "Pause under maximized or full-screen windows"
     }
 }

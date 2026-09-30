@@ -3,7 +3,7 @@
     "KPlugin": {
         "Id": "com.luiz.webpaper",
         "Name": "Web Paper",
-        "Description": "Página web como papel de parede",
+        "Description": "A web page as the desktop wallpaper",
         "Icon": "internet-web-browser",
         "Version": "1.1",
         "License": "MIT",
