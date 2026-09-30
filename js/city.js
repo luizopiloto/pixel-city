@@ -2340,9 +2340,17 @@
     // data-quality pins one; otherwise it adapts (see adapt()).
     const TIERS = ['low', 'medium', 'high'];
     const pinned = (new URLSearchParams(location.search).get('quality') || root.dataset.quality || '').toLowerCase();
-    // Unpinned, it starts at medium on touch screens and dense displays.
+    // Unpinned, it starts at medium on touch screens and dense displays, or
+    // at the lower tier this device settled on in the last week.
     const firstGuess = window.matchMedia('(pointer: coarse)').matches || (window.devicePixelRatio || 1) >= 2 ? 'medium' : 'high';
-    let quality = TIERS.includes(pinned) ? pinned : firstGuess;
+    const QKEY = 'pixel-city:quality';
+    let settled = null;
+    try {
+      const q = JSON.parse(window.localStorage.getItem(QKEY));
+      if (q && TIERS.includes(q.q) && Date.now() - q.t < 7 * 864e5) settled = q.q;
+    } catch (e) { /* no storage: start from the guess */ }
+    let quality = TIERS.includes(pinned) ? pinned
+      : settled && TIERS.indexOf(settled) < TIERS.indexOf(firstGuess) ? settled : firstGuess;
     const capFor = display => quality === 'low' ? 1 : quality === 'medium' ? Math.max(1, Math.floor(display / 2)) : Infinity;
 
     // Tilt-shift layers (styled in CSS); render() keeps the sharp band on the
@@ -3436,11 +3444,17 @@
 
     const still = window.matchMedia('(prefers-reduced-motion: reduce)');
     let last = performance.now();
-    // Adaptive quality: over 2 s windows, drop a tier when frames come more
-    // than 20% late; rise one after `rise` windows in a row on time with the
-    // JS work under a third of the frame. Each drop doubles `rise`, so it
-    // settles instead of flipping back and forth.
-    const A = { ms: 0, n: 0, gap: 0, work: 0, good: 0, rise: 5 };
+    // Adaptive quality. It only ever steps down, and only when frames keep
+    // coming late, so it settles once instead of flipping (each change costs
+    // a hitch: the canvas is resized, the blur switched). Late is judged
+    // against the display's own frame interval (`vsync`, measured: battery
+    // savers and some phones run animation frames at 30 Hz), and no faster
+    // than 60 fps: two 2 s windows in a row with over a quarter of the frames
+    // over 1.5 intervals drop a tier, after 3 s to settle in. The tier
+    // reached is remembered for the next visit.
+    const A = { ms: 0, n: 0, late: 0, bad: 0, since: 0, vsync: 0 };
+    const skipping = () => quality === 'low' && (A.vsync || 16.7) < 25;     // low: every other frame, where that's 30 fps or more
+    const frameMs = () => Math.max(A.vsync || 16.7, 16.7) * (skipping() ? 2 : 1);
     function setQuality(q) {
       quality = q;
       applyTilt();
@@ -3448,27 +3462,28 @@
       follow(Infinity);
       if (debug) console.log(`pixel-city: quality ${q}`);
     }
-    function adapt(gap, work) {
-      if (TIERS.includes(pinned) || gap > 250) return;     // pinned, or back from a hidden tab
-      A.ms += gap; A.n++; A.gap += gap; A.work += work;
+    function adapt(gap) {
+      if (TIERS.includes(pinned) || gap > 250 || !A.vsync) return;   // pinned, back from a hidden tab, or not measured yet
+      if ((A.since += gap) < 3000) return;
+      A.ms += gap; A.n++;
+      if (gap > frameMs() * 1.5) A.late++;
       if (A.ms < 2000) return;
-      const want = quality === 'low' ? 33.4 : 16.7, gapAvg = A.gap / A.n, workAvg = A.work / A.n;
-      A.ms = A.n = A.gap = A.work = 0;
+      A.bad = A.late > A.n * 0.25 ? A.bad + 1 : 0;
+      A.ms = A.n = A.late = 0;
       const k = TIERS.indexOf(quality);
-      if (gapAvg > want * 1.2 && k > 0) {
-        A.good = 0; A.rise *= 2;
+      if (A.bad >= 2 && k > 0) {
+        A.bad = A.since = 0;
         setQuality(TIERS[k - 1]);
-      } else if (gapAvg < want * 1.08 && workAvg < want / 3 && k < TIERS.length - 1) {
-        if (++A.good >= A.rise) { A.good = 0; setQuality(TIERS[k + 1]); }
-      } else A.good = 0;
+        try { window.localStorage.setItem(QKEY, JSON.stringify({ q: quality, t: Date.now() })); } catch (e) { /* not remembered */ }
+      }
     }
 
     let skip = false;
     function frame(now) {
-      if (quality === 'low' && (skip = !skip)) { requestAnimationFrame(frame); return; }   // 30 fps, evenly paced
+      if (skipping() && (skip = !skip)) { requestAnimationFrame(frame); return; }   // evenly paced
       const gapMs = now - last, dt = Math.min(0.1, gapMs / 1000);
       if (perf) {                                       // late and dropped frames: the stutter measure
-        const gap = now - last, want = quality === 'low' ? 33.4 : 16.7;
+        const gap = now - last, want = frameMs();
         if (gap > want * 1.25) perf.gaps20++;
         if (gap > want * 1.9) { perf.gaps33++; perf.all.dropped++; }
         perf.gapMax = Math.max(perf.gapMax, gap);
@@ -3480,8 +3495,8 @@
         perfNote('step', t0);
         follow(dt);
         render();
-        adapt(gapMs, performance.now() - t0);
-        bakeAhead([view.x, view.y, view.w, view.h], now, quality === 'low' ? 33.4 : 16.7, dt);
+        adapt(gapMs);
+        bakeAhead([view.x, view.y, view.w, view.h], now, frameMs(), dt);
       }
       requestAnimationFrame(frame);
     }
@@ -3491,8 +3506,24 @@
     resize();
     follow(Infinity);
     render();
-    requestAnimationFrame(frame);
     loading.finish();
+    // The display's frame interval, from a few empty animation frames before
+    // the loop starts (the page's own frames would say 30 Hz on a device too
+    // slow for 60); a low percentile, so an odd late one doesn't count.
+    const gaps = [];
+    await new Promise(done => {
+      let t = 0;
+      const tick = now => {
+        if (t) gaps.push(now - t);
+        t = now;
+        if (gaps.length < 24) requestAnimationFrame(tick); else done();
+      };
+      requestAnimationFrame(tick);
+    });
+    A.vsync = gaps.sort((a, b) => a - b)[4];
+    if (debug) console.log(`pixel-city: frame interval ${A.vsync.toFixed(1)} ms`);
+    last = performance.now();
+    requestAnimationFrame(frame);
   }
 
   document.querySelectorAll('[data-pixel-city]').forEach(el => {

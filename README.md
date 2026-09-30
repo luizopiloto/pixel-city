@@ -44,14 +44,18 @@ The "Standalone preview only" rules at the end of `css/style.css` make
 
 ## Quality tiers
 
-The page adapts to the device: over 2 s windows it drops a tier when frames
-come late and rises again after a while on time.
+The page adapts to the device, once: when frames keep coming late (over a
+quarter of them, two 2 s windows in a row, judged against the display's own
+refresh rate and never faster than 60 fps) it drops a tier. It never climbs
+back, so it settles instead of switching back and forth, and it remembers the
+tier for the next visit (a week).
 
 - **high**: drawn at full display resolution, tilt-shift blur and colour grade.
 - **medium**: no tilt-shift blur; on dense (2× or 3×) screens the canvas is
   drawn at a whole fraction of the display resolution and stretched sharp by
   CSS (a 3× phone fills a ninth of the pixels).
-- **low**: drawn at art-pixel resolution, no blur or colour grade, 30 fps.
+- **low**: drawn at art-pixel resolution, no blur or colour grade, 30 fps
+  (every other frame on 60 Hz and faster displays).
 
 It starts at medium on touch screens and dense displays, high otherwise;
 those devices also bake the scene in half-size chunks, so each bake is a
