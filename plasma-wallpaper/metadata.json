@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "Plasma/Wallpaper",
+    "KPlugin": {
+        "Id": "com.luiz.webpaper",
+        "Name": "Web Paper",
+        "Description": "Página web como papel de parede",
+        "Icon": "internet-web-browser",
+        "Version": "1.1",
+        "License": "MIT",
+        "Authors": [{ "Name": "Luiz" }]
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

@@ -62,6 +62,57 @@ those devices also bake the scene in half-size chunks, so each bake is a
 shorter hitch. Chunks around the view are baked ahead, toward where the camera
 is heading, in the time left after a frame is painted.
 
+## KDE Plasma wallpaper
+
+`plasma-wallpaper/` is a KDE Plasma 6 wallpaper plugin, **Web Paper**, that
+shows a web page as the desktop background: Pixel City by default. It pauses
+while a maximized or full-screen window covers the screen, keeps the page's
+cache and storage between sessions, and retries if the page fails to load
+(details in [its README](plasma-wallpaper/README.md)).
+
+**Needs** Plasma 6 and Qt WebEngine for QML:
+
+| Distribution | Package |
+| --- | --- |
+| Arch, Manjaro, CachyOS | `qt6-webengine` |
+| Debian, Ubuntu, KDE neon | `qml6-module-qtwebengine` |
+| Fedora | `qt6-qtwebengine` |
+
+**Install:**
+
+1. Get the files: `git clone https://github.com/luizopiloto/pixel-city.git`
+   (or download the repository as a ZIP from GitHub and unpack it).
+2. From the repository folder, install the plugin for your user:
+
+   ```bash
+   kpackagetool6 --type Plasma/Wallpaper --install plasma-wallpaper
+   ```
+
+   It goes to `~/.local/share/plasma/wallpapers/com.luiz.webpaper/`.
+3. Right-click the desktop, **Configure Desktop and Wallpaper…**, set
+   **Wallpaper type** to **Web Paper** and **Apply**. If it isn't in the
+   list, restart Plasma: `systemctl --user restart plasma-plasmashell`.
+
+**Settings** (on the same page): the URL, zoom (pixel art stays sharp at
+100%, 200%, 300%), a reload interval, and pausing under maximized or
+full-screen windows. Pixel City's switches go in the URL, e.g.
+`https://luizopiloto.github.io/pixel-city/?quality=low` on a weak machine or
+`?seed=123` for the same city every time.
+
+**Update** after pulling new changes, then restart Plasma to load them:
+
+```bash
+kpackagetool6 --type Plasma/Wallpaper --upgrade plasma-wallpaper
+systemctl --user restart plasma-plasmashell
+```
+
+**Uninstall** (pick another wallpaper first):
+`kpackagetool6 --type Plasma/Wallpaper --remove com.luiz.webpaper`
+
+If the wallpaper stays black, check that the Qt WebEngine package above is
+installed and look for errors with
+`journalctl --user -b | grep -i -e webpaper -e webengine`.
+
 ## Run locally
 
 ```bash
