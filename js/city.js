@@ -842,11 +842,12 @@
       const ROWS = ['lot-lines-v-hi', 'lot', 'lot-lines-v-lo', 'lot-lines-v-hi', 'lot'];
       for (let u = u0; u < pu1; u++) for (let v = v0 + 10; v < v1; v++) setGround(u, v, 'art/ground/' + ROWS[v - v0 - 10]);
       const gcol = u0 + 3;                           // the checkpoint's three lanes: gcol .. gcol+2
-      const su = u0 + 7.25, sv = v0 + 13.65;         // kept free for the hero
+      for (let u = gcol; u < gcol + 3; u++) for (let v = v0 + 12; v < v0 + 14; v++) setGround(u, v, 'art/ground/lot');   // the driveway in
+      const su = u0 + 7.25, sv = v0 + 12.35;         // kept free for the hero
       for (let k = 0; k < 18; k++) {
         const u = u0 + 0.25 + k * 0.5;
         for (const [v, dir] of [[v0 + 10.65, 1], [v0 + 12.35, -1], [v0 + 13.65, 1]]) {
-          if (v > v0 + 13 && u > gcol - 0.2 && u < gcol + 3.2) continue;           // the lanes in, under the canopy
+          if (v > v0 + 12 && u > gcol - 0.2 && u < gcol + 3.2) continue;           // the driveway in, from the canopy to the aisle
           if (v === sv && k === 14) continue;
           if (rng() < 0.55) parkedCars.push({ u, v, head: [0, rng() < 0.3 ? -dir : dir], type: pick(TYPES) });
         }
@@ -872,16 +873,17 @@
         props.push(['art/parking/fence-r1.png', u1 - 0.01, v, [u1 - 0.04, u1 - 0.01, v, v + 1]]);
       }
       nuclear = { area: [u0, u1, v0, v1] };
-      // A visit: in through the +u lane, right along the front aisle past the
-      // free stall, backing into it; out along the aisle, through the -u
-      // lane and right onto the street.
-      const J = bj + bh, inN = [], outN = [[su, sv - 0.1]];
+      // A visit: in through the +u lane, under the canopy and up the
+      // driveway to the middle aisle, right along it past the free stall,
+      // backing into it; out along the aisle, down the -u lane and right
+      // onto the street.
+      const J = bj + bh, inN = [], outN = [[su, sv + 0.1]];
       fillet(inN, [gcol + 2.5 - LANE, v1 + 0.5], [-1, 0], [0, -1]);
-      fillet(inN, [gcol + 2.5 - LANE, v0 + 14.5 - LANE], [0, -1], [1, 0]);
-      const P = [su + 0.9, v0 + 14.5];
+      fillet(inN, [gcol + 2.5 - LANE, v0 + 11.5 - LANE], [0, -1], [1, 0]);
+      const P = [su + 0.9, v0 + 11.5];
       inN.push(P);
-      fillet(outN, [su + LANE, v0 + 14.5 + LANE], [0, 1], [-1, 0]);
-      fillet(outN, [gcol + 0.5 + LANE, v0 + 14.5 + LANE], [-1, 0], [0, 1]);
+      fillet(outN, [su - LANE, v0 + 11.5 + LANE], [0, -1], [-1, 0]);
+      fillet(outN, [gcol + 0.5 + LANE, v0 + 11.5 + LANE], [-1, 0], [0, 1]);
       fillet(outN, [gcol + 0.5 + LANE, v1 + 0.5], [0, 1], [-1, 0]);
       lotStops.push({ ring: [u0 - 1, u1, v0 - 1, v1], T1: [bi + 2, J], T2: [bi + 1, J], noFrom: [-1, -1], entry: inN,
         back: curve(P, [su, P[1]], outN[0]), exit: [[bi + 1, J], [bi, J]], exitLead: outN });
@@ -2069,6 +2071,7 @@
   const behind = (a, b) => a.box[1] <= b.box[0] || a.box[3] <= b.box[2];
   const depth = o => o.box[0] + o.box[1] + o.box[2] + o.box[3];
   const drawsBefore = (a, b) => behind(a, b) || (!behind(b, a) && depth(a) <= depth(b));
+  const under = (a, b) => a[0] < b[1] && a[1] > b[0] && a[2] < b[3] && a[3] > b[2];      // footprints overlap
   const byOrder = (a, b) => a.order - b.order;
 
   // Two cars whose footprints overlap: order them along the axis where they
@@ -2478,7 +2481,9 @@
         animated.push(item);
         continue;
       }
-      addStatic(() => img[src], x - ax, y - ay, box || pointBox(u, v)).src = src;
+      const st = addStatic(() => img[src], x - ax, y - ay, box || pointBox(u, v));
+      st.src = src;
+      if (src.includes('nuclear/checkpoint')) st.roof = true;   // a canopy: over any car under it
     }
     // Cars parked in the lot: the car sprite's first wheel frame, baked.
     for (const pc of [...(city.parking ? city.parking.cars : []), ...(city.gas ? city.gas.cars : []), ...city.parkedCars]) {
@@ -3300,7 +3305,9 @@
         // overlap where the car's sprite overhangs its footprint, in front of
         // the face it crosses, so they aren't redrawn over it.
         front.length = 0;
-        for (const st of everything.query(rect)) if (!st.sky && drawsBefore(car, st) && !behind(st, car)) front.push(st);
+        for (const st of everything.query(rect)) {
+          if (!st.sky && ((drawsBefore(car, st) && !behind(st, car)) || (st.roof && under(car.box, st.box)))) front.push(st);
+        }
         if (!front.length) continue;
         front.sort(byOrder);
         ctx.save();
