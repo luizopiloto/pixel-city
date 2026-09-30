@@ -788,20 +788,20 @@
       // way in never turns right onto the +v street at T1 either (noFrom).
       gas = { cars, entry, exitLead, area: [u0, u0 + 5, v0 + 3, v0 + 6], T1: [bi + 2, bj + 2], T2: [bi + 1, bj + 2], noFrom: [bi + 2, bj + 1],
         exit: [[bi + 2, bj + 1], [bi + 2, bj]] };
-      // Shopping: in as to the pump, left along the mart's aisle past the
-      // free stall, backing into it; out along the aisle to the forecourt
-      // and on as from the pump.
+      // Shopping: the car park opens on the -u street, where its aisle
+      // meets it. In off that street heading -v, right into the aisle past
+      // the free stall, backing into it; out along the aisle and right onto
+      // the same street (the forecourt is only for fuel).
       const martIn = [];
-      fillet(martIn, [u0 + 6.5, vr + 0.5], [-1, 0], [0, -1]);
-      fillet(martIn, [u0 + 6.5, v0 + 4.5], [0, -1], [-1, 0]);
-      const P = [su - 0.9, v0 + 4.5 - LANE];
+      fillet(martIn, [u0 - 0.5, v0 + 4.5], [0, -1], [1, 0]);
+      const P = [su + 0.9, v0 + 4.5 + LANE];
       martIn.push(P);
       const martOut = [[su, sv - 0.1]];
-      fillet(martOut, [su + LANE, v0 + 4.5], [0, 1], [1, 0]);
-      fillet(martOut, [u0 + 6.5, v0 + 4.5], [1, 0], [0, -1]);
-      martOut.push(...exitLead.slice(1));
-      lotStops.push({ ring: [u0 - 1, ur, v0 - 1, vr], T1: gas.T1, T2: gas.T2, noFrom: gas.noFrom, entry: martIn,
-        back: curve(P, [su, P[1]], martOut[0]), exit: gas.exit, exitLead: martOut });
+      fillet(martOut, [su + LANE, v0 + 4.5], [0, 1], [-1, 0]);
+      fillet(martOut, [u0 - 0.5, v0 + 4.5], [-1, 0], [0, -1]);
+      const side = [[bi, bj + 2], [bi, bj + 1]];                          // the -u street, heading -v
+      lotStops.push({ ring: [u0 - 1, ur, v0 - 1, vr], T1: side[0], T2: side[1], noFrom: [-1, -1], entry: martIn,
+        back: curve(P, [su, P[1]], martOut[0]), exit: side, exitLead: martOut });
     }
 
     // Nuclear plant (15 × 15 tiles): two cooling towers and the reactor along
