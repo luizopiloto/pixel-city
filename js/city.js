@@ -2465,7 +2465,7 @@
           const f = item.frameOf ? item.frameOf() : (Math.floor(clock * ANIM_FPS) + phase) % item.frames;
           c.drawImage(img[src], f * w, 0, w, h, item.rect[0], item.rect[1], w, h);
         };
-        if (src.includes('parking/gate')) {            // raised as the hero comes near: open 0..1
+        if (src.includes('parking/gate')) {            // raised as the hero drives through: open 0..1
           const arm = src.includes('gate-l') ? 1 : -1;   // its arm reaches 0.47 along ±u from the post
           // Down, its arm reaches 0.47 along ±u across the lane; raised, only
           // the post is left there (a car passing beside it is in front).
@@ -2473,8 +2473,6 @@
           item.post = [u - 0.05, u + 0.05, v - 0.05, v + 0.05];
           item.box = item.shut;
           Object.assign(item, { pos: [u, v], open: 0 });
-          const n = city.nuclear && city.nuclear.area;                  // checkpoint barriers lift now and then
-          if (n && u >= n[0] && u <= n[1] && v >= n[2] && v <= n[3]) item.cycle = (u * 7.3) % 11;
           item.frameOf = () => Math.round(item.open * (item.frames - 1));
           gates.push(item);
         }
@@ -2901,11 +2899,21 @@
     }
 
     const GATE_S = 0.7;                               // s for a gate arm to swing up or down
+    // Does the hero's path cross gate g's arm, from 0.8 tiles behind the car
+    // to 1.6 ahead (time for the arm to rise before it gets there)?
+    function heroThrough(g) {
+      const p = hero.path, n = p.samples.length, [u0, u1, v0, v1] = g.shut;
+      const i0 = Math.max(0, Math.floor((hero.s - 0.8) / p.step)), i1 = Math.min(n - 1, Math.ceil((hero.s + 1.6) / p.step));
+      for (let i = i0; i <= i1; i += 3) {
+        const [u, v] = p.samples[i];
+        if (u > u0 - 0.1 && u < u1 + 0.1 && v > v0 - 0.15 && v < v1 + 0.15) return true;
+      }
+      return false;
+    }
     function step(dt) {
       clock += dt;
       for (const g of gates) {
-        const near = Math.hypot(hero.pos[0] - g.pos[0], hero.pos[1] - g.pos[1]) < 1.6 ||
-          (g.cycle !== undefined && (clock + g.cycle) % 11 < 3.5);                // a car let through
+        const near = heroThrough(g);
         g.open = Math.min(1, Math.max(0, g.open + (near ? dt : -dt) / GATE_S));
         const box = g.open > 0.5 ? g.post : g.shut;
         if (box !== g.box) { g.box = box; g.front = null; }
