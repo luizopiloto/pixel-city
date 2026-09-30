@@ -11,6 +11,10 @@ Kirigami.FormLayout {
     property alias cfg_ReloadSeconds: reloadSpin.value
     property alias cfg_PauseWhenCovered: pauseBox.checked
 
+    // Set by Plasma's wallpaper settings page (it logs errors without them)
+    property var configDialog
+    property var wallpaperConfiguration
+
     // The defaults (Plasma fills them in; without them it logs warnings)
     property string cfg_UrlDefault
     property real cfg_ZoomDefault

@@ -22,13 +22,19 @@ WallpaperItem {
     // Each wallpaper (one per screen) has its own storage: two profiles with
     // the same name in one process fight over the same files (nothing
     // persists, and one of the pages may not even run). The name is drawn at
-    // random the first time and kept in this screen's configuration.
-    readonly property string storageId: root.configuration.StorageId || ""
+    // random the first time and kept in this screen's configuration. If it
+    // can't be kept (a Plasma that loaded an older settings schema ignores the
+    // key), the page still shows, on a profile for this session only.
+    property string sessionId: ""
+    readonly property string storageId: root.configuration.StorageId || sessionId
 
     Component.onCompleted: {
         if (!root.configuration.StorageId) {
-            root.configuration.StorageId = Math.random().toString(36).slice(2, 10);
+            const id = Math.random().toString(36).slice(2, 10);
+            root.configuration.StorageId = id;
             root.configuration.writeConfig();   // Q_INVOKABLE; missing from the type info qmllint reads
+            if (!root.configuration.StorageId)
+                sessionId = id;
         }
     }
 
