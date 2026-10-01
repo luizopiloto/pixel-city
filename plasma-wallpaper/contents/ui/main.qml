@@ -87,6 +87,7 @@ WallpaperItem {
             settings.focusOnNavigationEnabled: false
             settings.javascriptCanOpenWindows: false
             settings.navigateOnDropEnabled: false
+            settings.errorPageEnabled: false        // black while it waits, not a browser error page
 
             // A profile on disk (named, not off the record): the page's storage
             // (where Pixel City keeps the quality tier it chose for this
@@ -127,18 +128,27 @@ WallpaperItem {
                 }
             }
 
-            // No network at login (or the site down): try again every 30 s.
+            // No network at login (or the site down): try again after 2, 4, 8…
+            // s, at most 30 s apart, from 2 s again once a load succeeds.
             onLoadingChanged: info => {
                 if (info.status === WebEngineView.LoadFailedStatus)
                     retry.restart();
+                else if (info.status === WebEngineView.LoadSucceededStatus)
+                    retry.wait = 2000;
             }
         }
     }
 
     Timer {
         id: retry
-        interval: 30000
-        onTriggered: (view.item as WebEngineView)?.reload()
+
+        property int wait: 2000
+
+        interval: wait
+        onTriggered: {
+            wait = Math.min(wait * 2, 30000);
+            (view.item as WebEngineView)?.reload();
+        }
     }
 
     Timer {

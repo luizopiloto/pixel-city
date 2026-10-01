@@ -10,7 +10,9 @@ A KDE Plasma 6 wallpaper plugin that shows a web page, by default
   Pixel City remembers the quality tier it chose. Each screen's wallpaper has
   its own profile (`webpaper-<id>`, the id kept in that wallpaper's settings):
   two profiles with one name in the same process clash and lose their data.
-- Retries every 30 s if the page fails to load (no network yet at login).
+- Retries if the page fails to load (no network yet at login): after 2, 4,
+  8… s, at most 30 s apart, showing black meanwhile, not an error page.
+  Pixel City itself waits for the network before loading its sprites.
 - Muted, no scroll bars.
 - Locked down for a desktop background: no browser context menu, no
   alert/confirm/prompt, file, color or login dialogs, no tooltips, no new
