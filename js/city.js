@@ -1894,7 +1894,7 @@
   // network to come up; online, it tries again after 1, 2, 4… s (at most
   // 30 s), since "online" only means a network is up, not that the site can be
   // reached yet. All waiting assets share one wait for the network.
-  let backOnline = null;
+  let backOnline = null, netWaits = 0;                // netWaits: assets waiting to be tried again
   const online = () => backOnline || (backOnline = new Promise(r => window.addEventListener('online', () => {
     backOnline = null;
     r();
@@ -1904,6 +1904,7 @@
       try {
         return await get();
       } catch (err) {
+        netWaits++;
         if (globalThis.navigator?.onLine === false) {
           console.warn(`${err.message}; waiting for the network`);
           await online();
@@ -1912,6 +1913,7 @@
           console.warn(`${err.message}; trying again in ${wait / 1000} s`);
           await new Promise(r => setTimeout(r, wait));
         }
+        netWaits--;
       }
     }
   }
@@ -1927,17 +1929,29 @@
     I: ['111', '010', '010', '010', '010', '010', '111'],
     N: ['10001', '11001', '11001', '10101', '10011', '10011', '10001'],
     G: ['0111', '1000', '1000', '1011', '1001', '1001', '0111'],
+    W: ['10001', '10001', '10001', '10101', '10101', '11011', '10001'],
+    T: ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
+    F: ['1111', '1000', '1000', '1110', '1000', '1000', '1000'],
+    R: ['1110', '1001', '1001', '1110', '1010', '1001', '1001'],
+    C: ['0111', '1000', '1000', '1000', '1000', '1000', '0111'],
+    E: ['1111', '1000', '1000', '1110', '1000', '1000', '1111'],
+    ' ': ['00', '00', '00', '00', '00', '00', '00'],
   };
   const textWidth = t => [...t].reduce((w, ch) => w + FONT[ch][0].length + 1, -1);
 
   // Overlay shown while the city is built: the hero Supra spinning in the
-  // middle with "LOADING" and animated dots. Returns { finish } to fade it
-  // out; ?loading in the URL keeps it up.
+  // middle with "LOADING" and animated dots, or "WAITING FOR CONNECTION" while
+  // the browser is offline or an asset waits to be tried again (see
+  // retrying). Returns { finish } to fade it out; ?loading in the URL keeps it
+  // up.
   function showLoading(root, base, zoom) {
     const el = document.createElement('div');
     el.className = 'pixel-city__loading';
     el.setAttribute('role', 'status');
-    el.innerHTML = '<span class="pixel-city__sr">Loading city…</span>';
+    const sr = document.createElement('span');          // what screen readers announce
+    sr.className = 'pixel-city__sr';
+    sr.textContent = 'Loading city…';
+    el.appendChild(sr);
     const c = document.createElement('canvas');
     c.setAttribute('aria-hidden', 'true');
     el.appendChild(c);
@@ -1974,7 +1988,10 @@
         const [px, py] = HERO_PIVOT[f];                               // per-frame ground point
         g.drawImage(car, f * cw * a, 0, cw * a, ch * a, cx - px * k, cy + 4 * k - py * k, cw * k, ch * k);
       }
-      const word = 'LOADING', w = textWidth(word);
+      const waiting = netWaits > 0 || globalThis.navigator?.onLine === false;
+      const word = waiting ? 'WAITING FOR CONNECTION' : 'LOADING', w = textWidth(word);
+      const said = waiting ? 'Waiting for connection…' : 'Loading city…';
+      if (sr.textContent !== said) sr.textContent = said;
       const dots = still ? 3 : Math.floor(t / 0.35) % 4;
       let x = cx - Math.round((w + 7) / 2) * k;
       const y = cy + 24 * k;
