@@ -1888,16 +1888,30 @@
     });
   }
 
-  // Tries get() until it succeeds, waiting 1, 2, 4… s between tries (at most
-  // 30 s): with the network not up yet (a desktop wallpaper at login, say) a
-  // single failed sprite would otherwise leave the loading screen up for good.
+  // Tries get() until it succeeds (one failed sprite would otherwise leave the
+  // loading screen up for good). Offline, as far as the browser knows (no
+  // network up yet: a desktop wallpaper at login, say), it waits for the
+  // network to come up; online, it tries again after 1, 2, 4… s (at most
+  // 30 s), since "online" only means a network is up, not that the site can be
+  // reached yet. All waiting assets share one wait for the network.
+  let backOnline = null;
+  const online = () => backOnline || (backOnline = new Promise(r => window.addEventListener('online', () => {
+    backOnline = null;
+    r();
+  }, { once: true })));
   async function retrying(get) {
     for (let wait = 1000; ; wait = Math.min(wait * 2, 30000)) {
       try {
         return await get();
       } catch (err) {
-        console.warn(`${err.message}; trying again in ${wait / 1000} s`);
-        await new Promise(r => setTimeout(r, wait));
+        if (globalThis.navigator?.onLine === false) {
+          console.warn(`${err.message}; waiting for the network`);
+          await online();
+          wait = 500;                                // back online: start again at 1 s
+        } else {
+          console.warn(`${err.message}; trying again in ${wait / 1000} s`);
+          await new Promise(r => setTimeout(r, wait));
+        }
       }
     }
   }
