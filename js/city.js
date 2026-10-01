@@ -1888,6 +1888,20 @@
     });
   }
 
+  // Tries get() until it succeeds, waiting 1, 2, 4… s between tries (at most
+  // 30 s): with the network not up yet (a desktop wallpaper at login, say) a
+  // single failed sprite would otherwise leave the loading screen up for good.
+  async function retrying(get) {
+    for (let wait = 1000; ; wait = Math.min(wait * 2, 30000)) {
+      try {
+        return await get();
+      } catch (err) {
+        console.warn(`${err.message}; trying again in ${wait / 1000} s`);
+        await new Promise(r => setTimeout(r, wait));
+      }
+    }
+  }
+
   /* ---------- loading screen ---------- */
 
   // 4×7 pixel letters for the loading text.
@@ -2304,7 +2318,11 @@
     };
 
     // Sprites drawn by tools/art.py, described by their manifest.
-    const art = await fetch(base + 'art/manifest.json').then(r => (r.ok ? r.json() : {}), () => ({}));
+    const art = await retrying(async () => {
+      const r = await fetch(base + 'art/manifest.json');
+      if (!r.ok) throw new Error(`Pixel City: failed to load ${base}art/manifest.json (${r.status})`);
+      return r.json();
+    });
     const srcs = new Set([
       ...Object.keys(art).map(k => 'art/' + k),
       ...Object.values(ROAD_TILES).map(([n]) => `tiles/${n}.png`),
@@ -2316,7 +2334,7 @@
         [`vehicles/${t}/${n}.png`, `vehicles/${t}/${n}@${HD}x.png`])),
     ]);
     const img = {};
-    await Promise.all([...srcs].map(async s => { img[s] = await load(base, s); }));
+    await Promise.all([...srcs].map(async s => { img[s] = await retrying(() => load(base, s)); }));
     await phase('images');
     // A new city on every load, unless data-seed pins one.
     const urlSeed = new URLSearchParams(location.search).get('seed');
